@@ -7574,14 +7574,15 @@ namespace ImmersiveAudioBitstream
 		// Set frame sample count per specification
 		sampleCount_ = GetIABNumFrameSamples(iFrameRateCode, iSampleRate);
 
-		// Set up DLC subblock
-		if (SetupDLCSubblock() != kIABNoError)
+		// Set up DLCSampleRate_ first: SetupDLCSubblock() reads it. This call also sets up dlcSimpleEncoder_
+		DLCSampleRate_ = dlc::eSampleRate_48000;
+		if (SetDLCSampleRate(iSampleRate) != kIABNoError)
 		{
 			oConstructionReturnError = kIABElementDLCMalConstructedError;
 		}
 
-		// Set up DLCSampleRate_. This call also sets up dlcSimpleEncoder_
-		if (SetDLCSampleRate(iSampleRate) != kIABNoError)
+		// Set up DLC subblock
+		if (SetupDLCSubblock() != kIABNoError)
 		{
 			oConstructionReturnError = kIABElementDLCMalConstructedError;
 		}

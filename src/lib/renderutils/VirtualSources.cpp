@@ -81,7 +81,7 @@ namespace RenderUtils
                                   std::vector<float> &pSpeakerGains)
     {
 
-        assert(!(pSpeakerGains.size() == (*fStart).fSpeakerGains.size() == fRoot.fSpeakerGains.size()));
+        assert(pSpeakerGains.size() == (*fStart).fSpeakerGains.size());
 
         std::vector<VirtualSource>::difference_type d = std::distance(fStart, fEnd);
 
