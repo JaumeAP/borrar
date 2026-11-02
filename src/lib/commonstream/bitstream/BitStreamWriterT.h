@@ -30,6 +30,7 @@
 #ifndef COMMON_STREAM_SRC_BITSTREAM_BITSTREAMWRITERT_H_
 #define COMMON_STREAM_SRC_BITSTREAM_BITSTREAMWRITERT_H_
 
+#include "commonstream/stream/StreamPos.h"
 #include <exception>
 #include <sstream>
 #include <istream>
@@ -77,12 +78,12 @@ namespace CommonStream
 
         ~BitStreamWriterT();
 
-        std::ios_base::streampos streamPosition() const
+        IABStreamPos streamPosition() const
         {
             return stream_->tellg();
         }
         
-        std::ios_base::streampos streamPosition(std::ios_base::streampos sp)
+        IABStreamPos streamPosition(IABStreamPos sp)
         {
             return stream_->seekg(sp);
         }

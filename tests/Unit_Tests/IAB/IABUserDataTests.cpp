@@ -27,6 +27,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *======================================================================*/
 
+#include "commonstream/stream/StreamPos.h"
 #include "gtest/gtest.h"
 #include "common/IABElements.h"
 #include <vector>
@@ -126,7 +127,7 @@ namespace
 			ASSERT_EQ(iabPackerUserData_->Serialize(elementBuffer), kIABNoError);
 
 			elementBuffer.seekg(0, std::ios::end);							// Do we need this? Would it not be already at this position?
-			std::ios_base::streampos pos = elementBuffer.tellg();
+			IABStreamPos pos = elementBuffer.tellg();
 			IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
 			IABElementSizeType elementSize = 0;
 
@@ -182,7 +183,7 @@ namespace
 			}
 
 			// Verify element size
-			std::ios_base::streampos readerPos = elementReader.streamPosition();
+			IABStreamPos readerPos = elementReader.streamPosition();
 			bytesInStream = static_cast<IABElementSizeType>(readerPos);
 			iabParserUserData_->GetElementSize(elementSize);
 

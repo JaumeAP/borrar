@@ -401,6 +401,7 @@ namespace ImmersiveAudioBitstream
 		targetUseCase_ = kIABUseCase_NoUseCase;
         numRendererOutputChannels_ = 0;
 		render96kTo48k_ = iRender96kTo48k;			// true (the default of SDK v1.x): 96 kHz frames render to 48 kHz
+		objectGainsSink_ = NULL;
 
 		enableSmoothing_ = true;					// Sample smoothing is enabled by default
 		enableDecorrelation_ = true;				// Object decorrelation per stream metadata is enabled by default
@@ -720,6 +721,7 @@ namespace ImmersiveAudioBitstream
 		objectRendererParam.targetUseCase_ = targetUseCase_;
 		objectRendererParam.render96kTo48k_ = render96kTo48k_;
 		objectRendererParam.frameEntityGainHistory_ = &frameEntityGainHistory_;
+		objectRendererParam.objectGainsSink_ = objectGainsSink_;
 
 		// Also init objectSubBlockRendererParam for setting up the objectSubBlockRenderer contained in object renderer
 		objectRendererParam.objectSubBlockRendererParam_.numRendererOutputChannels_ = numRendererOutputChannels_;
@@ -805,6 +807,16 @@ namespace ImmersiveAudioBitstream
     {
         return kIABMaxFrameSampleCount;
     }
+
+	// IABRendererMT::SetObjectGainsSink() implementation
+	void IABRendererMT::SetObjectGainsSink(IABObjectGainsSink *iSink)
+	{
+		objectGainsSink_ = iSink;
+		for (uint32_t i = 0; i < iabObjectRenderers_.size(); i++)
+		{
+			iabObjectRenderers_[i]->SetObjectGainsSink(iSink);
+		}
+	}
 
 	// IABRendererMT::GetProcessorCoreNumber() implementation
 	uint32_t IABRendererMT::GetProcessorCoreNumber()
@@ -1985,6 +1997,7 @@ namespace ImmersiveAudioBitstream
 		targetUseCase_ = kIABUseCase_NoUseCase;
 		numRendererOutputChannels_ = 0;
 		vbapObject_ = NULL;
+		objectGainsSink_ = NULL;
 		outputBufferPointers_ = NULL;
 		render96kTo48k_ = true;						// Default to true for SDK v1.x
 	}
@@ -1998,6 +2011,12 @@ namespace ImmersiveAudioBitstream
 		}
 
 		delete[] outputBufferPointers_;
+	}
+
+	// IABObjectRenderer::SetObjectGainsSink() implementation
+	void IABObjectRenderer::SetObjectGainsSink(IABObjectGainsSink *iSink)
+	{
+		objectGainsSink_ = iSink;
 	}
 
 	// IABObjectRenderer::SetUp() implementation
@@ -2014,6 +2033,7 @@ namespace ImmersiveAudioBitstream
 
 		// Frame gains history.
 		frameEntityGainHistory_ = iObjectRendererParam.frameEntityGainHistory_;
+		objectGainsSink_ = iObjectRendererParam.objectGainsSink_;
 
 		// Create a vbap object, an object for modelling IAB rendering parameters into
 		// an object that VBAPRenderer can render on.
@@ -2264,6 +2284,12 @@ namespace ImmersiveAudioBitstream
 				, outputBufferPointers_
 				, iOutputChannelCount
 				, subBlockSampleCount);
+
+			// Hand the sub-block's channel gains (the targets of the smoothing) to the sink, if any
+			if (objectGainsSink_)
+			{
+				objectGainsSink_->ObjectGains(objectMetaID, i, vbapObject_->channelGains_.data(), iOutputChannelCount);
+			}
 		}
 
 		// *****  MT critical section  *****

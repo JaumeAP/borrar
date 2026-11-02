@@ -27,6 +27,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *======================================================================*/
 
+#include "commonstream/stream/StreamPos.h"
 #include "gtest/gtest.h"
 #include "common/IABElements.h"
 #include <vector>
@@ -1228,7 +1229,7 @@ namespace
             
             elementBuffer.seekg(0, std::ios::end);
             
-            std::ios_base::streampos pos = elementBuffer.tellg();
+            IABStreamPos pos = elementBuffer.tellg();
             
             IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
             
@@ -1266,7 +1267,7 @@ namespace
             
             // Verify element size
             
-            std::ios_base::streampos readerPos = elementReader.streamPosition();
+            IABStreamPos readerPos = elementReader.streamPosition();
             
             bytesInStream = static_cast<IABElementSizeType>(readerPos);
             
@@ -1308,7 +1309,7 @@ namespace
 			// Serialize bed definition into stream
 			ASSERT_EQ(iabPackerBedDefinition_->Serialize(elementBuffer), kIABNoError);
 			elementBuffer.seekg(0, std::ios::end);
-			std::ios_base::streampos pos = elementBuffer.tellg();
+			IABStreamPos pos = elementBuffer.tellg();
 			IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
 			// Expect bytes present in packed buffer
 			EXPECT_GT(bytesInStream, 0);

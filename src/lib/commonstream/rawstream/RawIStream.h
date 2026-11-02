@@ -30,6 +30,7 @@
 #ifndef COMMON_STREAM_SRC_RAWSTREAM_RAWISTREAM_H_
 #define COMMON_STREAM_SRC_RAWSTREAM_RAWISTREAM_H_
 
+#include "commonstream/stream/StreamPos.h"
 #include "commonstream/utils/Namespace.h"
 #include "RawStream.h"
 
@@ -55,8 +56,8 @@ namespace CommonStream
         ReturnCode read(void *buf, BitCount_t nbytes);
         ReturnCode get(char &c);
         BitCount_t tellg() const;
-        ReturnCode seekg(std::ios_base::streampos pos);
-        ReturnCode seekg(std::ios_base::streamoff offs, std::ios_base::seekdir way);
+        ReturnCode seekg(IABStreamPos pos);
+        ReturnCode seekg(IABStreamOff offs, std::ios_base::seekdir way);
     };
 
 }   // namespace CommonStream

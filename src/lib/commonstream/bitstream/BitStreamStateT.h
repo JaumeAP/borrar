@@ -30,6 +30,7 @@
 #ifndef COMMON_STREAM_SRC_BITSTREAM_BITSTREAMSTATET_H_
 #define COMMON_STREAM_SRC_BITSTREAM_BITSTREAMSTATET_H_
 
+#include "commonstream/stream/StreamPos.h"
 #include <climits>
 #include <fstream>
 
@@ -53,12 +54,12 @@ namespace CommonStream
             return streamState_ = st;
         }
 
-        std::ios_base::streampos streamPosition() const
+        IABStreamPos streamPosition() const
         {
             return streamPosition_;
         }
         
-        std::ios_base::streampos streamPosition(std::ios_base::streampos sp)
+        IABStreamPos streamPosition(IABStreamPos sp)
         {
             return streamPosition_ = sp;
         }
@@ -125,7 +126,7 @@ namespace CommonStream
 
     protected:
         std::ios_base::iostate      streamState_;
-        std::ios_base::streampos    streamPosition_;
+        IABStreamPos    streamPosition_;
 
         int32_t                     bitBufferFill_;
         uint8_t                     bitBuffer_;
