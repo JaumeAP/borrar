@@ -27,6 +27,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *======================================================================*/
 
+#include "commonstream/stream/StreamPos.h"
 #include "gtest/gtest.h"
 #include "common/IABElements.h"
 #include "IABUtilities.h"
@@ -360,7 +361,7 @@ namespace
             
             elementBuffer.seekg(0, std::ios::end);
             
-            std::streampos pos = elementBuffer.tellg();
+            IABStreamPos pos = elementBuffer.tellg();
             
             IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
             
@@ -398,7 +399,7 @@ namespace
             
             // Verify element size
             
-            std::streampos readerPos = elementReader.streamPosition();
+            IABStreamPos readerPos = elementReader.streamPosition();
             
             bytesInStream = static_cast<IABElementSizeType>(readerPos);
             

@@ -27,6 +27,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *======================================================================*/
 
+#include "commonstream/stream/StreamPos.h"
 #include <cstring>
 
 #include "commonstream/rawstream/RawIStream.h"
@@ -98,13 +99,13 @@ namespace CommonStream
         return RawStream::tell();
     }
 
-    ReturnCode RawIStream::seekg(std::streampos pos)
+    ReturnCode RawIStream::seekg(IABStreamPos pos)
     {
         BitCount_t bpos = static_cast<BitCount_t>(pos);
         return RawStream::seek(bpos);
     }
 
-    ReturnCode RawIStream::seekg(std::streamoff offs, std::ios_base::seekdir way)
+    ReturnCode RawIStream::seekg(IABStreamOff offs, std::ios_base::seekdir way)
     {
         SBitCount_t boffs = static_cast<SBitCount_t>(offs);
         return RawStream::seek(boffs, way);

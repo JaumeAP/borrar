@@ -27,6 +27,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *======================================================================*/
 
+#include "commonstream/stream/StreamPos.h"
 #include <set>
 
 /* Implementation of IABElements class functions functions */
@@ -641,8 +642,8 @@ namespace ImmersiveAudioBitstream
         }
         
         // Skip the element body
-        std::streampos currentPosition = streamReader.streamPosition();
-        streamReader.streamPosition(currentPosition + static_cast<std::streampos>(parsedElementSize));
+        IABStreamPos currentPosition = streamReader.streamPosition();
+        streamReader.streamPosition(currentPosition + static_cast<IABStreamPos>(parsedElementSize));
 
         return kIABNoError;
     }
@@ -8989,7 +8990,7 @@ namespace ImmersiveAudioBitstream
 		Plex<8> plex8Field = 0;
 
 		// Save stream position before reading for audioDataID_
-		std::streampos positionAtStart;
+		IABStreamPos positionAtStart;
 		positionAtStart = streamReader.streamPosition();
 
 		// Read audio data ID
@@ -9001,7 +9002,7 @@ namespace ImmersiveAudioBitstream
 		audioDataID_ = static_cast<IABAudioDataIDType>(plex8Field);
 
 		// Calculating number of PCM sample bytes from parsed "elementSize_"
-		std::streampos positionCurrent = streamReader.streamPosition();
+		IABStreamPos positionCurrent = streamReader.streamPosition();
 		uint64_t audioIDBytes = static_cast<uint64_t>(positionCurrent - positionAtStart);
 		uint64_t pcmSampleBytesLength = static_cast<uint64_t>(elementSize_ - audioIDBytes);
 

@@ -30,6 +30,7 @@
 #ifndef COMMON_STREAM_SRC_BYTESTREAM_BYTESTREAMWRITERT_H_
 #define COMMON_STREAM_SRC_BYTESTREAM_BYTESTREAMWRITERT_H_
 
+#include "commonstream/stream/StreamPos.h"
 #include <exception>
 #include <sstream>
 #include <istream>
@@ -76,12 +77,12 @@ namespace CommonStream
         ReturnCode Init(unsigned char *iBuffer, ByteCount_t iBufferLength);
         ReturnCode Init(const ByteStreamWriterT<StreamType> &bs2);
 
-        std::streampos streamPosition() const
+        IABStreamPos streamPosition() const
         {
             return stream_->tellp();
         }
         
-        std::streampos streamPosition(std::streampos sp)
+        IABStreamPos streamPosition(IABStreamPos sp)
         {
             return stream_->seekp(sp);
         }

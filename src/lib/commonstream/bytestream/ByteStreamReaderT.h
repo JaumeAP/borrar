@@ -30,6 +30,7 @@
 #ifndef COMMON_STREAM_SRC_BYTESTREAM_BYTESTREAMREADERT_H_
 #define COMMON_STREAM_SRC_BYTESTREAM_BYTESTREAMREADERT_H_
 
+#include "commonstream/stream/StreamPos.h"
 #include <string.h>
 #include <istream>
 #include <climits>
@@ -129,12 +130,12 @@ namespace CommonStream
         ReturnCode Init(const ByteStreamReaderT<StreamType> &bs2);
         ByteStreamReaderT<StreamType> &operator=(const ByteStreamReaderT<StreamType> &bs2);
 
-        std::streampos streamPosition() const
+        IABStreamPos streamPosition() const
         {
             return stream_->tellg();
         }
         
-        std::streampos streamPosition(std::streampos sp)
+        IABStreamPos streamPosition(IABStreamPos sp)
         {
             return stream_->seekg(sp);
         }
