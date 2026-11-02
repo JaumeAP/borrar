@@ -406,9 +406,11 @@ namespace dlc
 
 		// shift bits
 
+		// (On the unsigned value: a left shift of a negative sample is undefined before C++20; the result is the same.)
+		uint32_t const shiftBits = iDLCData.getShiftBits();
 		for (curSample = oSamples; curSample < oSamples + iSampleCount; curSample++)
 		{
-			*curSample <<= iDLCData.getShiftBits();
+			*curSample = static_cast<int32_t>(static_cast<uint32_t>(*curSample) << shiftBits);
 		}
 
 		return;

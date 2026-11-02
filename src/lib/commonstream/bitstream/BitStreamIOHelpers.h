@@ -1052,14 +1052,16 @@ namespace CommonStream
         //
         while (true)
         {
-            uint64_t maxValue = 1;
-            maxValue = (maxValue << bitsForValue) - 1;
-
+            // Check the width before it is used as a shift: bitsForValue reaches 64 on the way, and shifting a 64 bit
+            // value by 64 is undefined.
             if (bitsForValue > 32)
             {
                 return CMNSTRM_PARAMS_BAD;
             }
-            else
+
+            uint64_t maxValue = 1;
+            maxValue = (maxValue << bitsForValue) - 1;
+
             if (value < maxValue)
             {
                 break;
