@@ -380,6 +380,13 @@ namespace ImmersiveAudioBitstream
         iabRenderer = new IABRendererMT(iConfig, iThreadPoolSize);
         return iabRenderer;
     }
+
+    // Create IABRendererMT instance, choosing how 96 kHz frames are rendered
+    IABRendererMTInterface* IABRendererMTInterface::Create(RenderUtils::IRendererConfiguration &iConfig, uint32_t iThreadPoolSize,
+                                                           bool iRender96kTo48k)
+    {
+        return new IABRendererMT(iConfig, iThreadPoolSize, iRender96kTo48k);
+    }
     
     // Deletes an IABRendererMT instance
     void IABRendererMTInterface::Delete(IABRendererMTInterface* iInstance)
@@ -388,11 +395,12 @@ namespace ImmersiveAudioBitstream
     }
 
 	// Constructor
-	IABRendererMT::IABRendererMT(RenderUtils::IRendererConfiguration &iConfig, uint32_t iThreadPoolSize)
+	IABRendererMT::IABRendererMT(RenderUtils::IRendererConfiguration &iConfig, uint32_t iThreadPoolSize,
+	                             bool iRender96kTo48k)
     {
 		targetUseCase_ = kIABUseCase_NoUseCase;
         numRendererOutputChannels_ = 0;
-		render96kTo48k_ = true;						// Default to true for SDK v1.x
+		render96kTo48k_ = iRender96kTo48k;			// true (the default of SDK v1.x): 96 kHz frames render to 48 kHz
 
 		enableSmoothing_ = true;					// Sample smoothing is enabled by default
 		enableDecorrelation_ = true;				// Object decorrelation per stream metadata is enabled by default

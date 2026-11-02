@@ -1115,7 +1115,8 @@ namespace ImmersiveAudioBitstream
     public:
 
         // Constructor
-        IABRendererMT(RenderUtils::IRendererConfiguration &iConfig, uint32_t iThreadPoolSize);
+        IABRendererMT(RenderUtils::IRendererConfiguration &iConfig, uint32_t iThreadPoolSize,
+                      bool iRender96kTo48k = true);
         
 		// Destructor
         ~IABRendererMT();
