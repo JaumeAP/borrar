@@ -140,6 +140,28 @@ namespace ImmersiveAudioBitstream
 	* @class IABRendererMTInterface
 	*/
 
+	/**
+	* Receives the channel gains IABRendererMT computes for each object pan sub-block, before its gain smoothing
+	* (what VBAP, extent, snap and zone control give for the physical output channels). For a client that pans the
+	* object's audio itself, as a binaural renderer with one interaural delay per object does, while the MT renderer
+	* keeps rendering the beds and the decorrelated objects. Called from the worker threads, possibly at the same time
+	* for different objects: the implementation locks what it needs.
+	*/
+	class IABObjectGainsSink
+	{
+	public:
+		virtual ~IABObjectGainsSink() {}
+
+		/**
+		* @param[in] iMetadataID the object's MetadataID
+		* @param[in] iSubBlock the pan sub-block index in the frame, 0-based
+		* @param[in] iGains one linear gain per output channel, in the renderer's output channel order
+		* @param[in] iChannelCount number of gains (the renderer's output channel count)
+		*/
+		virtual void ObjectGains(IABMetadataIDType iMetadataID, uint32_t iSubBlock, const float *iGains,
+		                         uint32_t iChannelCount) = 0;
+	};
+
 	class IABRendererMTInterface
 	{
 	public:
@@ -226,6 +248,14 @@ namespace ImmersiveAudioBitstream
 		* @return number of cores in host PC.
 		*/
 		virtual uint32_t GetProcessorCoreNumber() = 0;
+
+		/**
+		* Sets the sink that receives the channel gains of every object pan sub-block rendered from now on (see
+		* IABObjectGainsSink); NULL to stop. The sink must outlive the renderer or be unset first. Not in SDK v1.x.
+		*
+		* @memberof IABRendererMTInterface
+		*/
+		virtual void SetObjectGainsSink(IABObjectGainsSink *iSink) = 0;
 
 		/**
 		* Renders an IAB frame (iIABFrame) into output channels (ioOutputChannels).

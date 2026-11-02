@@ -387,6 +387,9 @@ namespace ImmersiveAudioBitstream
 		// Cross-frame gains history.
 		std::map<uint32_t, IABGAINSPROC::EntityPastChannelGains>* frameEntityGainHistory_;
 
+		// Receives the channel gains of each rendered object sub-block; may be NULL.
+		IABObjectGainsSink *objectGainsSink_;
+
 		// Set of setup params for object subblock renderer.
 		ObjectSubBlockRendererParam objectSubBlockRendererParam_;
 	};
@@ -530,6 +533,9 @@ namespace ImmersiveAudioBitstream
 		// Set up IABObjectRenderer based on "iObjectRendererParam".
 		// Client must call SetUp() following creation of an IABObjectRenderer object.
 		// 
+		// Sets the sink that receives the channel gains of each rendered object sub-block; NULL to stop.
+		void SetObjectGainsSink(IABObjectGainsSink *iSink);
+
 		iabError SetUp(ObjectRendererParam &iObjectRendererParam);
 
 		// Get size of cached rendered extent source in subBlockRenderer_ VBAP rendering engine.
@@ -580,6 +586,9 @@ namespace ImmersiveAudioBitstream
 		// Pointer to a vbapRendererObject instance. This is a working data structure when rendering an object.
 		// The instance must be reset to the default state with ResetVBAPObject() before it can be used for a new object.
 		IABVBAP::vbapRendererObject *vbapObject_;
+
+		// Receives the channel gains of each rendered object sub-block; may be NULL.
+		IABObjectGainsSink *objectGainsSink_;
 
 		// Internal work pointer for referencing parent IAB frame to be rendered.
 		// It is NOT owned by Object Renderer. Caller owns it. Ensure we do NOT delete it even after use. 
@@ -1146,6 +1155,9 @@ namespace ImmersiveAudioBitstream
 		// 
 		uint32_t GetProcessorCoreNumber();
 
+		// See IABRendererMTInterface::SetObjectGainsSink().
+		void SetObjectGainsSink(IABObjectGainsSink *iSink);
+
 		// Renders an IAB frame (iIABFrame) into output channels (oOutputChannels).
 		//
 		// Note: Caller retains ownership to (*iIABFrame) object after being rendered.
@@ -1185,6 +1197,9 @@ namespace ImmersiveAudioBitstream
 
 		// Flag to enable/disable 96k IAB stream rendering to 48k output.
 		bool     render96kTo48k_;
+
+		// Receives the channel gains of each rendered object sub-block; NULL when nobody listens.
+		IABObjectGainsSink *objectGainsSink_;
 
 		// Flag to enable/disable cross-frame/subblock sample smoothing processing.
 		//  - Enable/disable as set by render config file "c smooth 1|0" flag, with default to "enabled".
