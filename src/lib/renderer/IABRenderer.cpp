@@ -2430,7 +2430,7 @@ namespace ImmersiveAudioBitstream
     {
         // ** Per requirement, IAB render v1.1 allows the following sample rate and frame rate combinations only:
         // 48kHz: 24fps, 48fps, 60fps, 120fps, 23.97fps.  (23.97fps is for IABAudioDataPCM only, not IABAudioDataDLC)
-        // 96KHz: 24fps, 48fps
+        // 96KHz: 24fps, 48fps (and, in this fork, 25fps and 30fps)
         //
 
 		// add support for 2 more frame rates, 25fps & 30fps, at 48kHz sample rate only
@@ -2469,13 +2469,13 @@ namespace ImmersiveAudioBitstream
 				// Enabled frame rates, for 96kHz sample rate
 			case kIABFrameRate_24FPS:									// Core SDK 1.0, tested with core-CTP 1.0
 			case kIABFrameRate_48FPS:									// Core SDK 1.0, tested with core-CTP 1.0
+			case kIABFrameRate_25FPS:									// this fork: same path as 24fps (8 sub-blocks of 480), not in a CTP
+			case kIABFrameRate_30FPS:									// this fork: same path as 24fps (8 sub-blocks of 400), not in a CTP
 
 				isEnabledInCoreRenderer = true;
 				break;
 
 				// Blocked/disabled frame rates, for 96kHz sample rate
-			case kIABFrameRate_25FPS:
-			case kIABFrameRate_30FPS:
 			case kIABFrameRate_50FPS:
 			case kIABFrameRate_60FPS:
 			case kIABFrameRate_96FPS:
