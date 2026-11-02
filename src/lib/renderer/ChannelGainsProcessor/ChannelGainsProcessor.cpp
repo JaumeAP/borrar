@@ -61,6 +61,13 @@ namespace IABGAINSPROC
 	// Constructor implementation
 	ChannelGainsProcessor::ChannelGainsProcessor()
 	{
+		sampleRateFactor_ = 1;
+	}
+
+	// SetSampleRateFactor implementation
+	void ChannelGainsProcessor::SetSampleRateFactor(uint32_t iSampleRateFactor)
+	{
+		sampleRateFactor_ = (iSampleRateFactor == 2) ? 2 : 1;
 	}
 
 	// Destructor implementation
@@ -196,8 +203,11 @@ namespace IABGAINSPROC
 			// realRampPeriod is the final ramp period value that is created when capping slope. ie gain change rate.
 			// By design, slope (rate of gain change per sample period must be capped
 			// to reduce transients - the goal of any smoothing algorithm
-			// MAX_SLOPE is an empirical design thredshold for 48kHz audio
+			// MAX_SLOPE is an empirical design thredshold for 48kHz audio; at 96 kHz output the slope is halved and
+			// the ramp doubled (sampleRateFactor_), so a gain change takes the same 10 ms.
 			//
+			const float maxSlope = MAX_SLOPE / sampleRateFactor_;
+			const uint32_t rampSamplesAtMaxSlope = RAMP_SAMPLE_MAX_SLOPE * sampleRateFactor_;
 			uint32_t realRampPeriod = 0;
 
 			float currentGain = 0.0f;
@@ -231,17 +241,17 @@ namespace IABGAINSPROC
 				// Check slope against max limit. If it exceeds, cap it at max.
 				// Revise ramp period based on set slope value and save it in realRampPeriod
 				//
-				if (slope > MAX_SLOPE)
+				if (slope > maxSlope)
 				{
 					// gain ramp up
-					slope = MAX_SLOPE;
-					realRampPeriod = RAMP_SAMPLE_MAX_SLOPE;
+					slope = maxSlope;
+					realRampPeriod = rampSamplesAtMaxSlope;
 				}
-				else if (slope < -MAX_SLOPE)
+				else if (slope < -maxSlope)
 				{
 					// gain ramp down
-					slope = -MAX_SLOPE;
-					realRampPeriod = RAMP_SAMPLE_MAX_SLOPE;
+					slope = -maxSlope;
+					realRampPeriod = rampSamplesAtMaxSlope;
 				}
 				else if (slope == 0.0)
 				{

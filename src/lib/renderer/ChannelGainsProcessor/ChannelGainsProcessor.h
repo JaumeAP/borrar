@@ -53,6 +53,8 @@
 #define MAX_RAMP_SAMPLES        4800							// maximum interpolation ramp size
 #define MAX_SLOPE               0.00208333333333f				// maximum interpolation slope (corresponds to full range in 480 samples)
 #define RAMP_SAMPLE_MAX_SLOPE   480								// Number of samples to rample over when MAX_SLOPE is used
+// MAX_SLOPE and RAMP_SAMPLE_MAX_SLOPE are for 48 kHz (10 ms). At 96 kHz rendered at 96 kHz the processors divide the
+// slope by the sample rate factor (2) and multiply the ramp by it, so a gain change takes the same time.
 
 namespace IABGAINSPROC
 {
@@ -107,6 +109,13 @@ namespace IABGAINSPROC
 
 		/// Destructor
 		~ChannelGainsProcessor();
+
+		/**
+		* Sets the sample rate factor of the frames to come: 1 for 48 kHz output, 2 for 96 kHz output. The slope
+		* cap of the gain smoothing (MAX_SLOPE, for 48 kHz) is divided by it, so a gain change takes the same time
+		* at both rates. Default 1.
+		*/
+		virtual void SetSampleRateFactor(uint32_t iSampleRateFactor);
 
 		/**
 		* Update gains history for smoothing.
@@ -187,6 +196,9 @@ namespace IABGAINSPROC
 		// to support smoothing processing (when enabled)
 		//
 		std::map<int32_t, EntityPastChannelGains>   entityGainHistory_;
+
+		// 1 for 48 kHz output, 2 for 96 kHz output (see SetSampleRateFactor)
+		uint32_t sampleRateFactor_;
 	};
 
 } // namespace IABGAINSPROC

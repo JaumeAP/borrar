@@ -949,6 +949,7 @@ namespace ImmersiveAudioBitstream
 		if (!assetDecodersAreInited_)
 		{
 			frameParam.frameSampleCount_ = frameSampleCount_;
+			frameParam.sampleRateFactor_ = (sampleRate_ == kIABSampleRate_96000Hz && !render96kTo48k_) ? 2 : 1;
 
 			// Initialize frame parameters to iabAssetDecoders_ pool, to complete asset decoder init.
 			// This is done once only for IABRendererMT instance life cycle.
@@ -974,6 +975,7 @@ namespace ImmersiveAudioBitstream
 			frameParam.iabFrameToRender_ = iabFrameToRender_;
 			frameParam.frameRate_ = frameRate_;
 			frameParam.frameSampleCount_ = frameSampleCount_;
+			frameParam.sampleRateFactor_ = (sampleRate_ == kIABSampleRate_96000Hz && !render96kTo48k_) ? 2 : 1;
 			frameParam.numPanSubBlocks_ = numPanSubBlocks_;
 			frameParam.frameAudioDataIDToAssetPointerMap_ = &frameAudioDataIDToAssetPointerMap_;
 
@@ -996,6 +998,7 @@ namespace ImmersiveAudioBitstream
 			frameParam.iabFrameToRender_ = iabFrameToRender_;
 			frameParam.frameRate_ = frameRate_;
 			frameParam.frameSampleCount_ = frameSampleCount_;
+			frameParam.sampleRateFactor_ = (sampleRate_ == kIABSampleRate_96000Hz && !render96kTo48k_) ? 2 : 1;
 			frameParam.numPanSubBlocks_ = numPanSubBlocks_;
 			frameParam.frameAudioDataIDToAssetPointerMap_ = &frameAudioDataIDToAssetPointerMap_;
 
@@ -1504,6 +1507,14 @@ namespace ImmersiveAudioBitstream
 	}
 
 	// IABObjectSubBlockRenderer::SetUp() implementation
+	void IABObjectSubBlockRenderer::SetSampleRateFactor(uint32_t iSampleRateFactor)
+	{
+		if (channelGainsProcessor_)
+		{
+			channelGainsProcessor_->SetSampleRateFactor(iSampleRateFactor);
+		}
+	}
+
 	iabError IABObjectSubBlockRenderer::SetUp(ObjectSubBlockRendererParam &iObjectSubBlockRendererParam)
 	{
 		// Number of output channels for the current target config. 
@@ -2044,6 +2055,7 @@ namespace ImmersiveAudioBitstream
 
 		// frameSampleCount_
 		frameSampleCount_ = iFrameParam.frameSampleCount_;
+		subBlockRenderer_.SetSampleRateFactor(iFrameParam.sampleRateFactor_);
 
 		// Number of object panning subblocks
 		numPanSubBlocks_ = iFrameParam.numPanSubBlocks_;
@@ -2361,6 +2373,14 @@ namespace ImmersiveAudioBitstream
 	}
 
 	// IABBedChannelRenderer::SetUp() implementation
+	void IABBedChannelRenderer::SetSampleRateFactor(uint32_t iSampleRateFactor)
+	{
+		if (channelGainsProcessor_)
+		{
+			channelGainsProcessor_->SetSampleRateFactor(iSampleRateFactor);
+		}
+	}
+
 	iabError IABBedChannelRenderer::SetUp(BedChannelRendererParam &iBedChannelRendererParam)
 	{
 		// Total list including virtual
@@ -2737,6 +2757,7 @@ namespace ImmersiveAudioBitstream
 
 		// frameSampleCount_
 		frameSampleCount_ = iFrameParam.frameSampleCount_;
+		channelGainsProcessor_->SetSampleRateFactor(iFrameParam.sampleRateFactor_);
 
 		// Number of object panning subblocks
 		numPanSubBlocks_ = iFrameParam.numPanSubBlocks_;
@@ -3346,6 +3367,7 @@ namespace ImmersiveAudioBitstream
 
 		// frameSampleCount_
 		frameSampleCount_ = iFrameParam.frameSampleCount_;
+		channelRenderer_.SetSampleRateFactor(iFrameParam.sampleRateFactor_);
 
 		return kIABNoError;
 	}
@@ -3658,6 +3680,7 @@ namespace IABGAINSPROC
 	ChannelGainsProcessorMT::ChannelGainsProcessorMT(std::vector<SMPTE::ImmersiveAudioBitstream::IABMutex>& perChOutputMutex)
     :perChOutputMutex_(perChOutputMutex)
     {
+		sampleRateFactor_ = 1;
 		// Create VectDSP_ acceleration engine object/instance
 
 #ifdef USE_MAC_ACCELERATE
@@ -3678,6 +3701,11 @@ namespace IABGAINSPROC
 	}
 
 	// Destructor
+	void ChannelGainsProcessorMT::SetSampleRateFactor(uint32_t iSampleRateFactor)
+	{
+		sampleRateFactor_ = (iSampleRateFactor == 2) ? 2 : 1;
+	}
+
 	ChannelGainsProcessorMT::~ChannelGainsProcessorMT()
 	{
 		delete vectDSP_;
@@ -3777,8 +3805,11 @@ namespace IABGAINSPROC
 			// realRampPeriod is the final ramp period value that is created when capping slope. ie gain change rate.
 			// By design, slope (rate of gain change per sample period must be capped
 			// to reduce transients - the goal of any smoothing algorithm
-			// MAX_SLOPE is an empirical design thredshold for 48kHz audio
+			// MAX_SLOPE is an empirical design thredshold for 48kHz audio; at 96 kHz output the slope is halved and
+			// the ramp doubled (sampleRateFactor_), so a gain change takes the same 10 ms.
 			//
+			const float maxSlope = MAX_SLOPE / sampleRateFactor_;
+			const uint32_t rampSamplesAtMaxSlope = RAMP_SAMPLE_MAX_SLOPE * sampleRateFactor_;
 			uint32_t realRampPeriod = 0;
 
 			float currentGain = 0.0f;
@@ -3807,17 +3838,17 @@ namespace IABGAINSPROC
 				// Check slope against max limit. If it exceeds, cap it at max.
 				// Revise ramp period based on set slope value and save it in realRampPeriod
 				//
-				if (slope > MAX_SLOPE)
+				if (slope > maxSlope)
 				{
 					// gain ramp up
-					slope = MAX_SLOPE;
-					realRampPeriod = RAMP_SAMPLE_MAX_SLOPE;
+					slope = maxSlope;
+					realRampPeriod = rampSamplesAtMaxSlope;
 				}
-				else if (slope < -MAX_SLOPE)
+				else if (slope < -maxSlope)
 				{
 					// gain ramp down
-					slope = -MAX_SLOPE;
-					realRampPeriod = RAMP_SAMPLE_MAX_SLOPE;
+					slope = -maxSlope;
+					realRampPeriod = rampSamplesAtMaxSlope;
 				}
 				else if (slope == 0.0)
 				{

@@ -165,6 +165,9 @@ namespace IABGAINSPROC
 		/// Destructor
 		~ChannelGainsProcessorMT();
 
+		/// See ChannelGainsProcessor::SetSampleRateFactor
+		void SetSampleRateFactor(uint32_t iSampleRateFactor);
+
 		/**
 		* This function is doing nothing. It's intended to overwrite 
 		* ChannelGainsProcessor::UpdateGainsHistory() behavior.
@@ -256,6 +259,9 @@ namespace IABGAINSPROC
 
 		// VectDSP acceleration engine
 		CoreUtils::VectDSPInterface *vectDSP_;
+
+		// 1 for 48 kHz output, 2 for 96 kHz output (see SetSampleRateFactor)
+		uint32_t sampleRateFactor_;
 
 		// smoothedGains points to start of working gain buffer. The buffer stores sample-by-sample
 		// gains after smoothing processing.
@@ -399,6 +405,9 @@ namespace ImmersiveAudioBitstream
 		// Number of object panning subblocks for current frame rate in input IAB Frame, per IAB specification
 		uint8_t  numPanSubBlocks_;
 
+		// 1 when the output is 48 kHz, 2 when a 96 kHz frame is rendered at 96 kHz (gain smoothing follows it)
+		uint32_t sampleRateFactor_;
+
 		// Internal work pointer for referencing IAB frame to be rendered. Object set and owned by caller to RenderIABFrame(). 
 		const IABFrame*     iabFrameToRender_;
 
@@ -421,6 +430,9 @@ namespace ImmersiveAudioBitstream
 
 		// Destructor
 		~IABObjectSubBlockRenderer();
+
+		/// Passes the sample rate factor of the frames to come to the gain processor (see ChannelGainsProcessor).
+		void SetSampleRateFactor(uint32_t iSampleRateFactor);
 
 		// Set up IABObjectSubBlockRenderer based on "iObjectSubBlockRendererParam".
 		// Client must call SetUp() following creation of an IABObjectSubBlockRenderer object.
@@ -720,6 +732,9 @@ namespace ImmersiveAudioBitstream
 
 		// Destructor
 		~IABBedChannelRenderer();
+
+		/// Passes the sample rate factor of the frames to come to the gain processor (see ChannelGainsProcessor).
+		void SetSampleRateFactor(uint32_t iSampleRateFactor);
 
 		// Set up IABBedChannelRenderer based on "iBedChannelRendererParam".
 		// Client must call SetUp() following creation of an IABBedChannelRenderer object.

@@ -418,6 +418,12 @@ namespace ImmersiveAudioBitstream
 		{
 			frameSampleCount_ >>= 1;
 		}
+
+		// Gain smoothing follows the output rate: 2 when a 96 kHz frame is rendered at 96 kHz
+		if (channelGainsProcessor_)
+		{
+			channelGainsProcessor_->SetSampleRateFactor((sampleRate_ == kIABSampleRate_96000Hz && !render96kTo48k_) ? 2 : 1);
+		}
         
 		// Get number of sub-blocks corresponding to the frame rate 
 		numPanSubBlocks_ = GetIABNumSubBlocks(frameRate_);
