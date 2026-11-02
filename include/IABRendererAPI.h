@@ -168,6 +168,25 @@ namespace ImmersiveAudioBitstream
 		static IABRendererMTInterface* Create(RenderUtils::IRendererConfiguration &iConfig, uint32_t iThreadPoolSize);
 
 		/**
+		* Creates an IABRendererMT instance that chooses how a 96 kHz frame is rendered.
+		*
+		* With iRender96kTo48k true (what the other Create does), a 96 kHz frame is rendered to 48 kHz output: half the
+		* frame's samples, and a 96 kHz DLC element decoded at 48 kHz. With false, a 96 kHz frame is rendered at 96 kHz:
+		* the output has the frame's own sample count and the pan sub-blocks span the 96 kHz samples. 48 kHz frames are
+		* rendered the same either way.
+		*
+		* @memberof IABRendererMTInterface
+		*
+		* @param[in] iConfig pointer to an instance of RenderUtils::IRendererConfiguration
+		* @param[in] iThreadPoolSize number of persistent asset/object/bed processing threads to create
+		* @param[in] iRender96kTo48k true to render 96 kHz frames to 48 kHz output, false to render them at 96 kHz
+		*
+		* @returns a pointer to IABRendererMTInterface instance created
+		*/
+		static IABRendererMTInterface* Create(RenderUtils::IRendererConfiguration &iConfig, uint32_t iThreadPoolSize,
+		                                      bool iRender96kTo48k);
+
+		/**
 		* Deletes an IABRendererMT instance
 		*
 		* @memberof IABRendererMTInterface
