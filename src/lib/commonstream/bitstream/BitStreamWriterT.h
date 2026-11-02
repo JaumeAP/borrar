@@ -77,12 +77,12 @@ namespace CommonStream
 
         ~BitStreamWriterT();
 
-        std::ios_base::streampos streamPosition() const
+        std::streampos streamPosition() const
         {
             return stream_->tellg();
         }
         
-        std::ios_base::streampos streamPosition(std::ios_base::streampos sp)
+        std::streampos streamPosition(std::streampos sp)
         {
             return stream_->seekg(sp);
         }

@@ -34,6 +34,7 @@
 //
 //
 
+#include <iomanip>
 #include "gtest/gtest.h"
 #include "commonstream/hash/MD5Generator.h"
 #include "commonstream/bitstream/BitStreamReaderT.h"

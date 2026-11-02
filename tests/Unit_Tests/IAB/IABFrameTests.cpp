@@ -617,7 +617,7 @@ namespace
             
             elementBuffer.seekg(0, std::ios::end);
             
-            std::ios_base::streampos pos = elementBuffer.tellg();
+            std::streampos pos = elementBuffer.tellg();
             
             IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
             
@@ -943,7 +943,7 @@ namespace
             
             elementBuffer.seekg(0, std::ios::end);
             
-            std::ios_base::streampos pos = elementBuffer.tellg();
+            std::streampos pos = elementBuffer.tellg();
             
             IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
             

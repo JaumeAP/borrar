@@ -1228,7 +1228,7 @@ namespace
             
             elementBuffer.seekg(0, std::ios::end);
             
-            std::ios_base::streampos pos = elementBuffer.tellg();
+            std::streampos pos = elementBuffer.tellg();
             
             IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
             
@@ -1266,7 +1266,7 @@ namespace
             
             // Verify element size
             
-            std::ios_base::streampos readerPos = elementReader.streamPosition();
+            std::streampos readerPos = elementReader.streamPosition();
             
             bytesInStream = static_cast<IABElementSizeType>(readerPos);
             
@@ -1308,7 +1308,7 @@ namespace
 			// Serialize bed definition into stream
 			ASSERT_EQ(iabPackerBedDefinition_->Serialize(elementBuffer), kIABNoError);
 			elementBuffer.seekg(0, std::ios::end);
-			std::ios_base::streampos pos = elementBuffer.tellg();
+			std::streampos pos = elementBuffer.tellg();
 			IABElementSizeType bytesInStream = static_cast<IABElementSizeType>(pos);
 			// Expect bytes present in packed buffer
 			EXPECT_GT(bytesInStream, 0);
