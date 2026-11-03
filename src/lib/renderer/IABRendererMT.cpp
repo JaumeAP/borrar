@@ -3851,6 +3851,15 @@ namespace IABGAINSPROC
 				gainDiff = targetGain - currentGain;						// gain difference covered in smoothing ramp
 				slope = 0.0;												// init
 
+				// The channel is silent now and stays silent: the ramp, the product and the sum would all be zero, so
+				// skip them and the lock (most channels of an object have no gain). The gain state is what they leave.
+				if (currentGain == 0.0f && targetGain == 0.0f)
+				{
+					ioStartEndGains.touched_ = true;
+					ioStartEndGains.gainsValid_ = true;
+					continue;
+				}
+
 				// Make sure there is no divide by 0
 				if (initRampPeriod != 0)
 				{
@@ -3939,6 +3948,15 @@ namespace IABGAINSPROC
 			// Apply gains for each output channels
 			for (uint32_t i = 0; i < iChannelCount; i++)
 			{
+				// A zero gain adds nothing to the channel: skip the fill, the product and the lock.
+				if (iTargetChannelGains[i] == 0.0f)
+				{
+					ioStartEndGains.channelGains_[i] = 0.0f;
+					ioStartEndGains.touched_ = true;
+					ioStartEndGains.gainsValid_ = true;
+					continue;
+				}
+
 				// Fill smoothedGains array with identical gain value (no smoothing applied here.)
 				vectDSP_->fill(iTargetChannelGains[i], smoothedGains_, iSampleCount);
 
