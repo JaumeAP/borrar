@@ -649,6 +649,7 @@ namespace ImmersiveAudioBitstream
 		IABSampleType **oOutputChannels_;							// output buffers
 		IABRenderedOutputChannelCountType iOutputChannelCount_;		// number of channels
 		IABRenderedOutputSampleCountType iOutputSampleBufferCount_; // frame sample count
+		bool toDecorr_;												// the worker renders into its own decorrelation outputs, not its normal ones
 	};
 
 	// *** Below for bed
@@ -1131,6 +1132,12 @@ namespace ImmersiveAudioBitstream
 		IABObjectRenderer* threadObjectRenderer_;					// pointer to object renderer instance for thread
 		IABBedRenderer* threadBedRenderer_;							// pointer to bed renderer instance for thread
 		IABAudioAssetDecoder* threadAssetDecoder_;					// pointer to asset decoder instance for thread
+		// The thread's own outputs: its objects and beds add into them under its own mutexes, which no other thread
+		// takes; the frame thread adds them into the frame's outputs once the jobs are done, and clears them.
+		IABSampleType **threadOutput_;
+		IABSampleType **threadDecorrOutput_;						// the same for the objects routed to decorrelation
+		bool wroteOutput_;											// set by the thread, read and cleared by the frame thread
+		bool wroteDecorr_;
 	};
 
     /**
@@ -1410,9 +1417,14 @@ namespace ImmersiveAudioBitstream
 
 		static const uint32_t kMaxOutputChannels = 100;
 
-		// Mutex for writing to a channel's output buffer from all object and bed rendering.
-		// Initialized in Setup()
-        std::vector<IABMutex> perChOutputMutex;
+		// Per worker thread, the mutexes of its own output channels (the renderers take them, but no other thread does,
+		// so they never wait). Initialized in Setup().
+        std::vector<std::vector<IABMutex> > perThreadOutputMutex;
+
+		// Per worker thread, its normal and its decorrelation outputs (threadFunctionParameters_[i]->threadOutput_ and
+		// threadDecorrOutput_ point into them): numRendererOutputChannels_ channels of kIABMaxFrameSampleCount each.
+		std::vector<IABSampleType> threadOutputBuffer_;
+		std::vector<IABSampleType*> threadOutputPointers_;
 
 		// Mutex for accessing cross-frame gains cache.
 		IABMutex gainsHistoryMutex;
