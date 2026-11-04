@@ -1797,8 +1797,7 @@ namespace ImmersiveAudioBitstream
 				// vbapRendererExtendedSource must have a radius value of "1.0" only (explicitly or by conversion) to
 				// be properly rendered by the underlying VBAP rendering engine.
 				//
-				IABTransform iabTransform;
-				iabReturnCode = iabTransform.TransformIABToSphericalVBAP(iabPosX, iabPosY, iabPosZ, oAzimuth, oElevation, oRadius);
+				iabReturnCode = iabTransform_.TransformIABToSphericalVBAP(iabPosX, iabPosY, iabPosZ, oAzimuth, oElevation, oRadius);
 				if (iabReturnCode != kIABNoError)
 				{
 					return iabReturnCode;
@@ -1818,7 +1817,7 @@ namespace ImmersiveAudioBitstream
 
 					// convert spreadXYZ to aperture use Transform
 					// (Note: returned divergence is fixed to 0 by current algorithm)
-					iabReturnCode = iabTransform.TransformIAB1DSpreadToVBAPExtent(spreadXYZ, aperture, divergence);
+					iabReturnCode = iabTransform_.TransformIAB1DSpreadToVBAPExtent(spreadXYZ, aperture, divergence);
 
 					if (iabReturnCode != kIABNoError)
 					{
