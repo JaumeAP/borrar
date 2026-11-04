@@ -36,7 +36,10 @@
 #ifndef __VBAPRENDERER_H__
 #define __VBAPRENDERER_H__
 
+#include <array>
+#include <cstddef>
 #include <map>
+#include <unordered_map>
 
 // Header files from "CoreUtils" library
 #include "coreutils/VectDSPInterface.h"
@@ -341,6 +344,22 @@ namespace IABVBAP
 		// ie. speaker and channel gains.
 		/// VBAP cache, store previously rendered extent sources from the point of last clearance (reset)
 		std::vector<vbapRendererExtendedSource> previouslyRenderedExtendedSources_;
+
+		/// The rendering parameters of an extended source (HasSameRenderingParams: x, y, z, aperture, divergence, gain),
+		/// each with -0 made +0, so that equal keys are exactly the parameters operator== finds equal.
+		typedef std::array<float, 6> CacheKey;
+		struct CacheKeyHash
+		{
+			std::size_t operator()(CacheKey const &iKey) const;
+		};
+		/// False when a parameter is NaN: operator== never finds such a source equal, so it is never indexed or found.
+		static bool MakeCacheKey(vbapRendererExtendedSource const &iSource, CacheKey &oKey);
+		/// Rebuilds previouslyRenderedIndex_ from previouslyRenderedExtendedSources_ (after entries are erased).
+		void RebuildPreviouslyRenderedIndex();
+
+		/// The position in previouslyRenderedExtendedSources_ of the entry with each key. A miss adds the source, so a key
+		/// is never there twice; the lookup finds the entry the linear search over the cache found.
+		std::unordered_map<CacheKey, std::size_t, CacheKeyHash> previouslyRenderedIndex_;
 	};
 
 } // namespace IABVBAP

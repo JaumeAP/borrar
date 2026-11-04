@@ -153,7 +153,72 @@ protected:
         delete lfeChannel;
     }
 
-    
+    // The extended source cache, looked up by the rendering parameters: a source with the parameters of an entry
+    // (including -0 for +0) reuses its gains and adds nothing; any other source is rendered and added; Reset empties
+    // it; Cleanup drops the entries not touched since the last Cleanup and the lookup no longer finds them.
+    virtual void TestExtendedSourceCache()
+    {
+        ASSERT_TRUE(renderer_ != NULL);
+
+        IABVBAP::vbapRendererExtendedSource front(speakerCount_, channelCount_);
+        ASSERT_EQ(kVBAPNoError, front.SetPosition(CoreUtils::Vector3(0.0f, 1.0f, 0.0f)));
+        ASSERT_EQ(kVBAPNoError, front.SetAperture(0.3f));
+        IABVBAP::vbapRendererExtendedSource right(speakerCount_, channelCount_);
+        ASSERT_EQ(kVBAPNoError, right.SetPosition(CoreUtils::Vector3(1.0f, 0.0f, 0.0f)));
+        ASSERT_EQ(kVBAPNoError, right.SetAperture(0.3f));
+
+        EXPECT_EQ(0u, renderer_->GetVBAPCacheSize());
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&front));
+        EXPECT_EQ(1u, renderer_->GetVBAPCacheSize());
+        std::vector<float> const frontSpeakers = front.renderedSpeakerGains_;
+        std::vector<float> const frontChannels = front.renderedChannelGains_;
+
+        // The same parameters: reused, nothing added.
+        IABVBAP::vbapRendererExtendedSource again = front;
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&again));
+        EXPECT_EQ(1u, renderer_->GetVBAPCacheSize());
+        EXPECT_EQ(frontSpeakers, again.renderedSpeakerGains_);
+        EXPECT_EQ(frontChannels, again.renderedChannelGains_);
+
+        // x of -0: equal to +0 for HasSameRenderingParams, so reused too.
+        IABVBAP::vbapRendererExtendedSource negativeZero = front;
+        negativeZero.position_.x = -0.0f;
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&negativeZero));
+        EXPECT_EQ(1u, renderer_->GetVBAPCacheSize());
+        EXPECT_EQ(frontChannels, negativeZero.renderedChannelGains_);
+
+        // Other parameters: rendered and added.
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&right));
+        EXPECT_EQ(2u, renderer_->GetVBAPCacheSize());
+        EXPECT_NE(frontChannels, right.renderedChannelGains_);
+        std::vector<float> const rightChannels = right.renderedChannelGains_;
+
+        // Cleanup keeps the touched entries (and clears their flags); a second Cleanup drops right, untouched since.
+        renderer_->CleanupPreviouslyRendered();
+        EXPECT_EQ(2u, renderer_->GetVBAPCacheSize());
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&again));
+        EXPECT_EQ(2u, renderer_->GetVBAPCacheSize());
+        renderer_->CleanupPreviouslyRendered();
+        EXPECT_EQ(1u, renderer_->GetVBAPCacheSize());
+
+        // front is still found after the erase; right is rendered again.
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&again));
+        EXPECT_EQ(1u, renderer_->GetVBAPCacheSize());
+        EXPECT_EQ(frontChannels, again.renderedChannelGains_);
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&right));
+        EXPECT_EQ(2u, renderer_->GetVBAPCacheSize());
+        EXPECT_EQ(rightChannels, right.renderedChannelGains_);
+
+        // Reset empties it; front is rendered again, to the same gains.
+        renderer_->ResetPreviouslyRendered();
+        EXPECT_EQ(0u, renderer_->GetVBAPCacheSize());
+        ASSERT_EQ(kVBAPNoError, renderer_->RenderExtendedSource(&again));
+        EXPECT_EQ(1u, renderer_->GetVBAPCacheSize());
+        EXPECT_EQ(frontSpeakers, again.renderedSpeakerGains_);
+        EXPECT_EQ(frontChannels, again.renderedChannelGains_);
+    }
+
+
 private:
     
     // Handles to a list of Renderer entities
@@ -179,5 +244,11 @@ TEST_F(IABVABPRendererAPITest, ObjectAPITest)
 TEST_F(IABVABPRendererAPITest, LFEAPITest)
 {
     TestLFERenderingAPIs();
+}
+
+// Test the extended source cache
+TEST_F(IABVABPRendererAPITest, ExtendedSourceCacheTest)
+{
+    TestExtendedSourceCache();
 }
 
