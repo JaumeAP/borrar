@@ -182,12 +182,17 @@ void *MTRenderThreadWorker( void *iParam )
 			// Into this thread's own outputs; the frame thread adds them into the frame's.
 			bool const toDecorr = job.objectRenderParam_.toDecorr_;
 			(toDecorr ? myThreadParam->wroteDecorr_ : myThreadParam->wroteOutput_) = true;
-			iabReturnCode = myObjectRenderer->RenderIABObject(
-				*(job.objectRenderParam_.iIABObject_)
-				, toDecorr ? myThreadParam->threadDecorrOutput_ : myThreadParam->threadOutput_
-				, job.objectRenderParam_.iOutputChannelCount_
-				, job.objectRenderParam_.iOutputSampleBufferCount_
-			);
+			IABSampleType **outputs = toDecorr ? myThreadParam->threadDecorrOutput_ : myThreadParam->threadOutput_;
+			if (job.objectRenderParam_.iFloatObject_ != NULL)
+			{
+				iabReturnCode = myObjectRenderer->RenderFloatObject(*(job.objectRenderParam_.iFloatObject_), outputs
+					, job.objectRenderParam_.iOutputChannelCount_, job.objectRenderParam_.iOutputSampleBufferCount_);
+			}
+			else
+			{
+				iabReturnCode = myObjectRenderer->RenderIABObject(*(job.objectRenderParam_.iIABObject_), outputs
+					, job.objectRenderParam_.iOutputChannelCount_, job.objectRenderParam_.iOutputSampleBufferCount_);
+			}
 		}
 		else if (job.elementType_ == kIABElementID_BedDefinition)
 		{
@@ -196,12 +201,16 @@ void *MTRenderThreadWorker( void *iParam )
 			// Capture error, but current unhandled.
 			// (Ming note: how to handle errors from thread worker is left as future improvement.)
 			myThreadParam->wroteOutput_ = true;
-			iabReturnCode = myBedRenderer->RenderIABBed(
-				*(job.bedRenderParam_.iIABBed_)
-				, myThreadParam->threadOutput_
-				, job.bedRenderParam_.iOutputChannelCount_
-				, job.bedRenderParam_.iOutputSampleBufferCount_
-			);
+			if (job.bedRenderParam_.iFloatBed_ != NULL)
+			{
+				iabReturnCode = myBedRenderer->RenderFloatBed(*(job.bedRenderParam_.iFloatBed_), myThreadParam->threadOutput_
+					, job.bedRenderParam_.iOutputChannelCount_, job.bedRenderParam_.iOutputSampleBufferCount_);
+			}
+			else
+			{
+				iabReturnCode = myBedRenderer->RenderIABBed(*(job.bedRenderParam_.iIABBed_), myThreadParam->threadOutput_
+					, job.bedRenderParam_.iOutputChannelCount_, job.bedRenderParam_.iOutputSampleBufferCount_);
+			}
 		}
 		else;	// Ignore any other element types
 	
@@ -878,6 +887,23 @@ namespace ImmersiveAudioBitstream
                                          , IABSampleType **oOutputChannels
                                          , IABRenderedOutputChannelCountType iOutputChannelCount
                                          , IABRenderedOutputSampleCountType iOutputSampleBufferCount)
+	{
+		return RenderFrame(&iIABFrame, NULL, oOutputChannels, iOutputChannelCount, iOutputSampleBufferCount);
+	}
+
+	iabError IABRendererMT::RenderFloatFrame(const IABFloatFrame& iFrame
+	                                         , IABSampleType **oOutputChannels
+	                                         , IABRenderedOutputChannelCountType iOutputChannelCount
+	                                         , IABRenderedOutputSampleCountType iOutputSampleBufferCount)
+	{
+		return RenderFrame(NULL, &iFrame, oOutputChannels, iOutputChannelCount, iOutputSampleBufferCount);
+	}
+
+	iabError IABRendererMT::RenderFrame(const IABFrameInterface* iIABFrame
+	                                    , const IABFloatFrame* iFloatFrame
+	                                    , IABSampleType **oOutputChannels
+	                                    , IABRenderedOutputChannelCountType iOutputChannelCount
+	                                    , IABRenderedOutputSampleCountType iOutputSampleBufferCount)
     {
         bool hasDecorrObjects = false;
         iabError ec = kIABNoError;	// Copy of error code from threaded job
@@ -886,11 +912,17 @@ namespace ImmersiveAudioBitstream
 		// For collecting frame parameters that are necessary for setting up ObjectRenderer objects, etc.
 		FrameParam frameParam;
 
-		// Get frame rate of iIABFrame
-        iIABFrame.GetFrameRate(frameRate_);
-
-		// Get sample rate of iIABFrame
-		iIABFrame.GetSampleRate(sampleRate_);
+		// Get frame rate and sample rate of the frame
+		if (iIABFrame != NULL)
+		{
+			iIABFrame->GetFrameRate(frameRate_);
+			iIABFrame->GetSampleRate(sampleRate_);
+		}
+		else
+		{
+			frameRate_ = iFloatFrame->frameRate;
+			sampleRate_ = iFloatFrame->sampleRate;
+		}
         
 		// Report error if the frame sample rate is anything other than 48kHz or 96kHz
 		if ( (sampleRate_ != kIABSampleRate_48000Hz) && (sampleRate_ != kIABSampleRate_96000Hz) )
@@ -983,20 +1015,27 @@ namespace ImmersiveAudioBitstream
 		//
 		UpdateFrameGainsHistory();
 
-        // Save input IAB frame
-        iabFrameToRender_ = dynamic_cast<const IABFrame*>(&iIABFrame);
+        // Save input IAB frame (none for a float frame)
+        iabFrameToRender_ = iIABFrame != NULL ? dynamic_cast<const IABFrame*>(iIABFrame) : NULL;
 
         // Get sub-element from the IAB frame
         std::vector<IABElement*> frameSubElements;
-        iIABFrame.GetSubElements(frameSubElements);
 		IABElementCountType subElementCount = 0;
-		iabFrameToRender_->GetSubElementCount(subElementCount);
-
-		if ((0 == subElementCount) || (0 == frameSubElements.size()))
+		if (iIABFrame != NULL)
 		{
-			// No element in this frame, so nothing to render.
-            // The renderer output buffer has already been cleared, return a silent output frame to the client.
-            return kIABNoError;
+			iIABFrame->GetSubElements(frameSubElements);
+			iabFrameToRender_->GetSubElementCount(subElementCount);
+
+			if ((0 == subElementCount) || (0 == frameSubElements.size()))
+			{
+				// No element in this frame, so nothing to render.
+				// The renderer output buffer has already been cleared, return a silent output frame to the client.
+				return kIABNoError;
+			}
+		}
+		else if (iFloatFrame->beds.empty() && iFloatFrame->objects.empty())
+		{
+			return kIABNoError; // as an IAB frame with no element
 		}
 
 		// Asset decoders to be initialized with minimal frame parameters here before decoding/unpacking
@@ -1133,6 +1172,9 @@ namespace ImmersiveAudioBitstream
 		IABElementIDType elementID;
 		uint32_t assetCount = 0;								// Counting number of asset elements and make it does not exceed 128.
 
+		// A float frame has no audio element to decode: its samples are read where they are.
+		if (iIABFrame != NULL)
+		{
 		// *****  MT critical section  *****
 
 		// lock mutex for adding entries (asset DLC and PCM elements only) to job queue
@@ -1243,6 +1285,7 @@ namespace ImmersiveAudioBitstream
 		{
 			return ec;
 		}
+		} // if (iIABFrame != NULL)
 
 		// Resume to prepare next batch of queue.
 
@@ -1252,6 +1295,30 @@ namespace ImmersiveAudioBitstream
 
 		// lock mutex for adding objects and beds to job queue
 		jobQueueMutex.lock();
+
+		// The objects and beds of a float frame
+		if (iFloatFrame != NULL)
+		{
+			for (std::size_t j = 0; j < iFloatFrame->objects.size(); j++)
+			{
+				IABFloatObject const &object = iFloatFrame->objects[j];
+				jobParameterCarrier_.elementType_ = kIABElementID_ObjectDefinition;
+				jobParameterCarrier_.objectRenderParam_.iIABObject_ = NULL;
+				jobParameterCarrier_.objectRenderParam_.iFloatObject_ = &object;
+				// Decorrelation from the first sub-block, as for an IAB object
+				bool const decorr = enableDecorrelation_ && !object.pans.empty() && object.pans[0].decorrelate;
+				jobParameterCarrier_.objectRenderParam_.toDecorr_ = decorr;
+				hasDecorrObjects = hasDecorrObjects || decorr;
+				renderJobQueue_.push(jobParameterCarrier_);
+			}
+			for (std::size_t b = 0; b < iFloatFrame->beds.size(); b++)
+			{
+				jobParameterCarrier_.elementType_ = kIABElementID_BedDefinition;
+				jobParameterCarrier_.bedRenderParam_.iIABBed_ = NULL;
+				jobParameterCarrier_.bedRenderParam_.iFloatBed_ = &iFloatFrame->beds[b];
+				renderJobQueue_.push(jobParameterCarrier_);
+			}
+		}
 
 		// Ading objects and beds to queue, here
 		//
@@ -1268,6 +1335,7 @@ namespace ImmersiveAudioBitstream
 
 				// Set up object params
 				jobParameterCarrier_.objectRenderParam_.iIABObject_ = elementToRender;					// object to be rendered
+				jobParameterCarrier_.objectRenderParam_.iFloatObject_ = NULL;
 
 				IABMetadataIDType objectMetaID;
 				elementToRender->GetMetadataID(objectMetaID);
@@ -1329,6 +1397,7 @@ namespace ImmersiveAudioBitstream
 
 				// Set up bed params
 				jobParameterCarrier_.bedRenderParam_.iIABBed_ = (dynamic_cast<IABBedDefinition*>(frameSubElements[i]));				// bed to be rendered
+				jobParameterCarrier_.bedRenderParam_.iFloatBed_ = NULL;
 
 				// Push to job queue
 				renderJobQueue_.push(jobParameterCarrier_);
@@ -1725,7 +1794,50 @@ namespace ImmersiveAudioBitstream
 	}
 
 	// IABObjectSubBlockRenderer::RenderIABObjectSubBlock() implementation
+	void IABObjectSubBlockRenderer::PanOf(const IABObjectSubBlockInterface& iIABObjectSubBlock, SubBlockPan& oPan)
+	{
+		iIABObjectSubBlock.GetPanInfoExists(oPan.panInfoExists);
+		iIABObjectSubBlock.GetObjectGain(oPan.gain);
+		iIABObjectSubBlock.GetObjectPositionToUnitCube(oPan.position);
+		iIABObjectSubBlock.GetObjectSpread(oPan.spread);
+		iIABObjectSubBlock.GetObjectSnap(oPan.snap);
+		iIABObjectSubBlock.GetObjectZoneGains9(oPan.zones);
+	}
+
+	void IABObjectSubBlockRenderer::PanOf(const IABFloatPan& iPan, SubBlockPan& oPan)
+	{
+		// Through the IAB value types, so that the values are quantised as an IAB frame's are.
+		oPan.panInfoExists = 1;
+		oPan.gain.setIABGain(iPan.gain);
+		oPan.position.setIABObjectPosition(iPan.x, iPan.y, iPan.z);
+		oPan.spread.setIABObjectSpread(iPan.spreadMode, iPan.spreadX, iPan.spreadY, iPan.spreadZ);
+		oPan.snap = IABObjectSnap();
+		oPan.snap.objectSnapPresent_ = iPan.snap ? 1 : 0;
+		float const tolerance = iPan.snapTolerance < 0.0f ? 0.0f : (iPan.snapTolerance > 1.0f ? 1.0f : iPan.snapTolerance);
+		oPan.snap.objectSnapTolerance_ = static_cast<uint16_t>(tolerance * 4095.0f + 0.5f);
+		oPan.zones = IABObjectZoneGain9();
+		oPan.zones.objectZoneControl_ = iPan.zoneControl ? 1 : 0;
+		for (int z = 0; z < 9 && iPan.zoneControl; z++)
+		{
+			oPan.zones.zoneGains_[z].setIABZoneGain(iPan.zoneGains[z]);
+		}
+	}
+
 	iabError IABObjectSubBlockRenderer::RenderIABObjectSubBlock(const IABObjectSubBlockInterface& iIABObjectSubBlock
+		, IABGAINSPROC::EntityPastChannelGains& ioChannelGains
+		, IABVBAP::vbapRendererObject *iVbapObject
+		, IABSampleType *iAssetSamples
+		, IABSampleType **oOutputChannels
+		, IABRenderedOutputChannelCountType iOutputChannelCount
+		, IABRenderedOutputSampleCountType iOutputSampleBufferCount)
+	{
+		SubBlockPan pan;
+		PanOf(iIABObjectSubBlock, pan);
+		return RenderSubBlockPan(pan, ioChannelGains, iVbapObject, iAssetSamples, oOutputChannels, iOutputChannelCount,
+		                         iOutputSampleBufferCount);
+	}
+
+	iabError IABObjectSubBlockRenderer::RenderSubBlockPan(const SubBlockPan& iPan
 		, IABGAINSPROC::EntityPastChannelGains& ioChannelGains
 		, IABVBAP::vbapRendererObject *iVbapObject
 		, IABSampleType *iAssetSamples
@@ -1761,7 +1873,7 @@ namespace ImmersiveAudioBitstream
 		// subBlockPanExist is always "1" for first sub block
 		// For remaining sub blocks, presence is stream dependent.
 		// 
-		iIABObjectSubBlock.GetPanInfoExists(subBlockPanExist);
+		subBlockPanExist = iPan.panInfoExists;
 
 		if (subBlockPanExist)
 		{
@@ -1770,14 +1882,14 @@ namespace ImmersiveAudioBitstream
 			IABGain objectIABGain;
 
 			// Retrieve objectIABGain from sub-block
-			iIABObjectSubBlock.GetObjectGain(objectIABGain);
+			objectIABGain = iPan.gain;
 
 			// Get the IAB x, y, z positions from the IAB Sub block.
 			CartesianPosInUnitCube objectPosition;
 			IABValueX iabPosX;
 			IABValueY iabPosY;
 			IABValueZ iabPosZ;
-			iIABObjectSubBlock.GetObjectPositionToUnitCube(objectPosition);
+			objectPosition = iPan.position;
 			objectPosition.getIABObjectPosition(iabPosX, iabPosY, iabPosZ);
 
 			bool objectHasSpread = false;
@@ -1787,7 +1899,7 @@ namespace ImmersiveAudioBitstream
 			float spreadZ = 0.0f;
 
 			// Get spread info
-			iIABObjectSubBlock.GetObjectSpread(objectSpread);
+			objectSpread = iPan.spread;
 			IABSpreadModeType objectSpreadMode = objectSpread.getIABObjectSpreadMode();
 			objectSpread.getIABObjectSpread(spreadXYZ, spreadY, spreadZ);
 
@@ -1818,7 +1930,7 @@ namespace ImmersiveAudioBitstream
 			{
 				// Check if object snap should be activated
 				IABObjectSnap objectSnap;
-				iIABObjectSubBlock.GetObjectSnap(objectSnap);
+				objectSnap = iPan.snap;
 
 				if (objectSnap.objectSnapPresent_)
 				{
@@ -1922,7 +2034,7 @@ namespace ImmersiveAudioBitstream
 				//
 				IABGain objectIABGain;
 				// Retrieve objectIABGain from sub-block
-				iIABObjectSubBlock.GetObjectGain(objectIABGain);
+				objectIABGain = iPan.gain;
 				// Retrieve linear gain scale factor
 				float objectGain = objectIABGain.getIABGain();
 				// Set it to iVbapObject
@@ -1941,7 +2053,7 @@ namespace ImmersiveAudioBitstream
 				// Note that SDK 1.0 does not support Zone19
 
 			IABObjectZoneGain9 zoneGain9;
-			iIABObjectSubBlock.GetObjectZoneGains9(zoneGain9);
+			zoneGain9 = iPan.zones;
 
 			if (iabObjectZone9_)
 			{
@@ -2287,6 +2399,46 @@ namespace ImmersiveAudioBitstream
 			return kIABNoError;
 		}
 
+		// The pans of the sub-blocks, read from the IAB frame
+		std::vector<IABObjectSubBlock*> objectPanSubBlocks;
+		iIABObject.GetPanSubBlocks(objectPanSubBlocks);
+		pans_.resize(objectPanSubBlocks.size());
+		for (std::size_t i = 0; i < objectPanSubBlocks.size(); i++)
+		{
+			IABObjectSubBlockRenderer::PanOf(*objectPanSubBlocks[i], pans_[i]);
+		}
+		return RenderPans(objectMetaID, frameAudioDataIDToAssetPointerMap_->at(audioDataID), oOutputChannels,
+		                  iOutputChannelCount);
+	}
+
+	iabError IABObjectRenderer::RenderFloatObject(const IABFloatObject& iObject
+		, IABSampleType **oOutputChannels
+		, IABRenderedOutputChannelCountType iOutputChannelCount
+		, IABRenderedOutputSampleCountType iOutputSampleBufferCount)
+	{
+		if ((iOutputChannelCount == 0) ||
+			(iOutputSampleBufferCount == 0) ||
+			(iOutputSampleBufferCount != frameSampleCount_) ||
+			(iObject.samples == NULL) ||
+			(iObject.pans.size() != numPanSubBlocks_))
+		{
+			return kIABBadArgumentsError;
+		}
+		pans_.resize(iObject.pans.size());
+		for (std::size_t i = 0; i < iObject.pans.size(); i++)
+		{
+			IABObjectSubBlockRenderer::PanOf(iObject.pans[i], pans_[i]);
+		}
+		// The renderers take a non-const pointer and only read the samples.
+		return RenderPans(iObject.metadataId, const_cast<IABSampleType*>(iObject.samples), oOutputChannels,
+		                  iOutputChannelCount);
+	}
+
+	iabError IABObjectRenderer::RenderPans(IABMetadataIDType objectMetaID
+		, IABSampleType *sampleBufferFloat
+		, IABSampleType **oOutputChannels
+		, IABRenderedOutputChannelCountType iOutputChannelCount)
+	{
 		// Get start channel gains from inside object rendering
 
 		// Start gains from previous frame
@@ -2315,19 +2467,9 @@ namespace ImmersiveAudioBitstream
 		// Set object ID
 		vbapObject_->SetId(static_cast<uint32_t>(objectMetaID));
 
-		// Get panblocks
-		std::vector<IABObjectSubBlock*> objectPanSubBlocks;
-		iIABObject.GetPanSubBlocks(objectPanSubBlocks);
-		std::vector<IABObjectSubBlock*>::const_iterator iterPanBlock;
-
-		// Check size of objectPanSubBlocks to be non-zero.
-		// Also it must divide into iOutputSampleBufferCount for non-fractional frame rates (i.e. except for 23.97fps)
-		//
-		uint32_t numSubBlocks = static_cast<uint32_t>(objectPanSubBlocks.size());
+		// The pans of the sub-blocks (pans_, read by the caller)
+		uint32_t numSubBlocks = static_cast<uint32_t>(pans_.size());
 		uint32_t subBlockSampleCount = 0;
-
-		// Retrieve object asset
-		IABSampleType *sampleBufferFloat = frameAudioDataIDToAssetPointerMap_->at(audioDataID);
 
 		// Sub block input and output PCM buffer pointers
 		IABSampleType *inputAssetSamples = NULL;
@@ -2346,9 +2488,7 @@ namespace ImmersiveAudioBitstream
 			}
 
 			// Render a sub block
-			const IABObjectSubBlock* subblockToRender = dynamic_cast<const IABObjectSubBlock*>(objectPanSubBlocks[i]);
-
-			subBlockRenderer_.RenderIABObjectSubBlock(*subblockToRender
+			subBlockRenderer_.RenderSubBlockPan(pans_[i]
 				, inStartOutEndChannelGains
 				, vbapObject_
 				, inputAssetSamples
@@ -2543,21 +2683,29 @@ namespace ImmersiveAudioBitstream
 	{
 		IABGain channelGain;
 		iIABChannel.GetChannelGain(channelGain);
+		IABChannelIDType channelID;
+		iIABChannel.GetChannelID(channelID);
+		return RenderChannel(channelID, channelGain.getIABGain(), iAssetSamples, oOutputChannels, iOutputChannelCount,
+		                     iOutputSampleBufferCount);
+	}
 
-		float gain = channelGain.getIABGain();
-
+	iabError IABBedChannelRenderer::RenderChannel(IABChannelIDType channelID
+		, float gain
+		, IABSampleType *iAssetSamples
+		, IABSampleType **oOutputChannels
+		, IABRenderedOutputChannelCountType iOutputChannelCount
+		, IABRenderedOutputSampleCountType iOutputSampleBufferCount)
+	{
 		if (gain == 0.0f)
 		{
 			// zero channel gain, skip, no further processing required.
 			return kIABNoError;
 		}
 
-		IABChannelIDType channelID;
 		IABSampleType *ptrInputSamples = iAssetSamples;
 
 		// Use bed channel ID to find the corresponding config file speaker label
 		IABBedChannelInfoMap::const_iterator iterBedChannelMap;
-		iIABChannel.GetChannelID(channelID);
 		iterBedChannelMap = IABConfigTables::bedChannelInfoMap.find(channelID);
 
 		if (iterBedChannelMap == IABConfigTables::bedChannelInfoMap.end())
@@ -3646,6 +3794,43 @@ namespace ImmersiveAudioBitstream
 		}
 
 		return kIABNoError;
+	}
+
+	iabError IABBedRenderer::RenderFloatBed(const IABFloatBed& iBed
+		, IABSampleType **oOutputChannels
+		, IABRenderedOutputChannelCountType iOutputChannelCount
+		, IABRenderedOutputSampleCountType iOutputSampleBufferCount)
+	{
+		channelRenderer_.SetContainerBedID(iBed.metadataId);
+		if (iBed.channels.empty())
+		{
+			return kIABRendererBedDefinitionError;
+		}
+		bool noLfeInConfig = false;
+		for (std::size_t c = 0; c < iBed.channels.size(); c++)
+		{
+			IABFloatBedChannel const &channel = iBed.channels[c];
+			if (channel.samples == NULL)
+			{
+				continue; // no audio for this frame, as an audio data ID of 0
+			}
+			IABGain gain; // quantised as an IAB channel gain is
+			gain.setIABGain(channel.gain);
+			iabError const iabReturnCode = channelRenderer_.RenderChannel(channel.channelId, gain.getIABGain()
+				, const_cast<IABSampleType*>(channel.samples)	// read only
+				, oOutputChannels
+				, iOutputChannelCount
+				, iOutputSampleBufferCount);
+			if (kIABRendererNoLFEInConfigForBedLFEWarning == iabReturnCode)
+			{
+				noLfeInConfig = true;
+			}
+			else if (kIABNoError != iabReturnCode)
+			{
+				return iabReturnCode;
+			}
+		}
+		return noLfeInConfig ? kIABRendererNoLFEInConfigForBedLFEWarning : kIABNoError;
 	}
 
 	/****************************************************************************

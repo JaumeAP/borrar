@@ -36,6 +36,7 @@
 #define	__IABRENDERERAPI_H__
 
 #include <memory>
+#include <vector>
 
 #include "IABDataTypes.h"
 #include "renderutils/IRendererConfiguration.h"
@@ -162,6 +163,54 @@ namespace ImmersiveAudioBitstream
 		                         uint32_t iChannelCount) = 0;
 	};
 
+	/**
+	* A frame given as float values (Not in SDK v1.x): the input of IABRendererMTInterface::RenderFloatFrame, for a
+	* client that holds its audio and pans as float and renders them in the same process, with no IAB frame, no
+	* bitstream element and no copy of the samples. The values go through the same quantisation as an IAB frame's
+	* (IABGain, CartesianPosInUnitCube, IABObjectSpread, the zone gains), so a float frame and the IAB frame with the
+	* same values render the same.
+	*/
+	struct IABFloatPan
+	{
+		float x = 0.5f, y = 0.5f, z = 0.0f;			// position in the ST 2098-2 unit cube
+		float gain = 1.0f;							// object gain, 0 to 1
+		IABSpreadModeType spreadMode = kIABSpreadMode_HighResolution_1D;
+		float spreadX = 0.0f, spreadY = 0.0f, spreadZ = 0.0f;
+		bool snap = false;
+		float snapTolerance = 0.0f;					// 0 to 1 (4095 in the bitstream)
+		bool zoneControl = false;
+		float zoneGains[9] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+		bool decorrelate = false;					// maximum decorrelation; read from the first sub-block, as IABLib does
+	};
+
+	struct IABFloatObject
+	{
+		IABMetadataIDType metadataId = 0;			// keys the gain smoothing across frames: keep it from frame to frame
+		const IABSampleType *samples = nullptr;		// the frame's samples of the object
+		std::vector<IABFloatPan> pans;				// one per pan sub-block of the frame rate
+	};
+
+	struct IABFloatBedChannel
+	{
+		IABChannelIDType channelId = kIABChannelID_Left;
+		const IABSampleType *samples = nullptr;
+		float gain = 1.0f;
+	};
+
+	struct IABFloatBed
+	{
+		IABMetadataIDType metadataId = 0;
+		std::vector<IABFloatBedChannel> channels;
+	};
+
+	struct IABFloatFrame
+	{
+		IABSampleRateType sampleRate = kIABSampleRate_48000Hz;
+		IABFrameRateType frameRate = kIABFrameRate_24FPS;
+		std::vector<IABFloatBed> beds;
+		std::vector<IABFloatObject> objects;
+	};
+
 	class IABRendererMTInterface
 	{
 	public:
@@ -278,6 +327,18 @@ namespace ImmersiveAudioBitstream
 		*            no longer be used.
 		*/
 		virtual iabError RenderIABFrame(const IABFrameInterface& iIABFrame
+			, IABSampleType **ioOutputChannels
+			, IABRenderedOutputChannelCountType iOutputChannelCount
+			, IABRenderedOutputSampleCountType iOutputSampleBufferCount) = 0;
+
+		/**
+		* Renders a float frame (IABFloatFrame) into output channels, as RenderIABFrame renders an IAB frame with the
+		* same values: the same objects and beds, no conditional elements, no bed remaps, no use cases. Each object needs
+		* one pan per sub-block of the frame rate. Not in SDK v1.x.
+		*
+		* @memberof IABRendererMTInterface
+		*/
+		virtual iabError RenderFloatFrame(const IABFloatFrame& iFrame
 			, IABSampleType **ioOutputChannels
 			, IABRenderedOutputChannelCountType iOutputChannelCount
 			, IABRenderedOutputSampleCountType iOutputSampleBufferCount) = 0;
