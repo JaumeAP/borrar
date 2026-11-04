@@ -343,7 +343,6 @@ namespace IABVBAP
 	{
 		uint32_t speakerCount = static_cast<uint32_t>(iSpeakerGains.size());
 		uint32_t channelCount = static_cast<uint32_t>(oChannelGains.size());
-        int32_t outputIndex = 0;
 
 		if ((speakerCount == 0)
 			|| (channelCount == 0))
@@ -355,58 +354,57 @@ namespace IABVBAP
 		//
 		std::fill(oChannelGains.begin(), oChannelGains.end(), 0.0f);
 
-		// The output index of every downmix entry, looked up once: the two map lookups of the configuration on every entry
-		// of every sub-block were a large part of the render.
-		if (downmixOutputIndex_.size() != speakerCount)
+        // Config file speaker and channel index notes:
+
+        // The following is an example config file with non-sequential channel index and index gap, see the "chan" column
+        // Note that there are only 7 output channels but the highest index is 8
+        //
+        // # Speaker definitions:
+        // # s   name   chan   theta   phi   exception-uri
+        // s   L        1   -30.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020101.00000000
+        // s   C        0     0.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020103.00000000
+        // s   R        6    30.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020102.00000000
+        // s   LS       4  -110.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020105.00000000
+        // s   RS       7   110.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020106.00000000
+        // s   LFE      3     0.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020104.00000000
+        // s   TSC1     8     0.00   90.00
+
+        // To mix speaker gains to correct output channel, use RendererConfigurationFile::GetRendererOutputIndexbyChannel
+        // to get renderer output index associated with the speaker's channel index "chan"
+        // indicates channel position in the rendered output buffer block
+
+		// Every downmix entry, looked up once, as one flat list speaker by speaker: the configuration's map lookups,
+		// its at() calls and a nested table on every entry of every sub-block were a large part of the render. The
+		// same products added in the same order.
+		if (downmixSpeakerCount_ != speakerCount)
 		{
-			std::vector<std::vector<int32_t> > table(speakerCount);
+			std::vector<DownmixEntry> entries;
 			for (uint32_t speaker = 0; speaker < speakerCount; speaker++)
 			{
 				std::vector<RenderUtils::DownmixValue> const &downmix = renderSpeakers_->at(speaker).downmix_;
 				for (std::size_t k = 0; k < downmix.size(); k++)
 				{
-					int32_t index = -1;
-					rendererConfiguration_->GetRendererOutputIndexbyChannel(downmix[k].ch_, index);
-					table[speaker].push_back(index); // -1 (no such channel) is refused below, as the lookup refused it
+					DownmixEntry entry;
+					entry.speaker_ = speaker;
+					entry.outputIndex_ = -1; // -1 (no such channel) is refused below, as the lookup refused it
+					entry.coefficient_ = downmix[k].coefficient_;
+					rendererConfiguration_->GetRendererOutputIndexbyChannel(downmix[k].ch_, entry.outputIndex_);
+					entries.push_back(entry);
 				}
 			}
-			downmixOutputIndex_.swap(table);
+			downmixEntries_.swap(entries);
+			downmixSpeakerCount_ = speakerCount;
 		}
 
-		// Downmix processing from speakerGains to channelGains
-		for (uint32_t speaker = 0; speaker < speakerCount; speaker++)
+		for (std::size_t k = 0; k < downmixEntries_.size(); k++)
 		{
-			for (std::vector<RenderUtils::DownmixValue>::const_iterator iter = renderSpeakers_->at(speaker).downmix_.begin(); 
-			                                                            iter != renderSpeakers_->at(speaker).downmix_.end();
-																		iter++)
+			DownmixEntry const &entry = downmixEntries_[k];
+			if (entry.outputIndex_ < 0)
 			{
-                // Config file speaker and channel index notes:
-                
-                // The following is an example config file with non-sequential channel index and index gap, see the "chan" column
-                // Note that there are only 7 output channels but the highest index is 8
-                //
-                // # Speaker definitions:
-                // # s   name   chan   theta   phi   exception-uri
-                // s   L        1   -30.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020101.00000000
-                // s   C        0     0.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020103.00000000
-                // s   R        6    30.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020102.00000000
-                // s   LS       4  -110.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020105.00000000
-                // s   RS       7   110.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020106.00000000
-                // s   LFE      3     0.00    0.00   urn:smpte:ul:060E2B34.0401010D.03020104.00000000
-                // s   TSC1     8     0.00   90.00
-
-                // To mix speaker gains to correct output channel, use RendererConfigurationFile::GetRendererOutputIndexbyChannel
-                // to get renderer output index associated with the speaker's channel index "chan"
-                // indicates channel position in the rendered output buffer block
-                outputIndex = downmixOutputIndex_[speaker][iter - renderSpeakers_->at(speaker).downmix_.begin()];
-                if (outputIndex < 0)
-                {
-                    // Error mapping config file speaker channel number
-                    return kVBAPParameterOutOfBoundsError;
-                }
-                
-				oChannelGains[outputIndex] += (*iter).coefficient_ * iSpeakerGains.at(speaker);
+				// Error mapping config file speaker channel number
+				return kVBAPParameterOutOfBoundsError;
 			}
+			oChannelGains[entry.outputIndex_] += entry.coefficient_ * iSpeakerGains[entry.speaker_];
 		}
 
 		return kVBAPNoError;

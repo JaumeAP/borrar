@@ -334,7 +334,15 @@ namespace IABVBAP
 
 		/// SpeakerDownmix's table, built on its first call (the configuration does not change): per speaker, the renderer
 		/// output index of each entry of its downmix_, in order (GetRendererOutputIndexbyChannel of the entry's channel).
-		std::vector<std::vector<int32_t> > downmixOutputIndex_;
+		// The downmix of the configuration's speakers, flat, in SpeakerDownmix's order; built for downmixSpeakerCount_.
+		struct DownmixEntry
+		{
+			uint32_t speaker_;
+			int32_t outputIndex_;
+			float coefficient_;
+		};
+		std::vector<DownmixEntry> downmixEntries_;
+		uint32_t downmixSpeakerCount_ = 0;
 
 		// RenderExtent's working buffer, kept between calls so that each render allocates nothing.
 		std::vector<float> extentGains_;
