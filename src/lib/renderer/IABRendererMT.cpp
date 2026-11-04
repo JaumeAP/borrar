@@ -1280,7 +1280,6 @@ namespace ImmersiveAudioBitstream
 					// Route rendered output to Decorr output. Decorr to be processed after rendering of all 
 					// frame sub-elements.
 					//
-					jobParameterCarrier_.objectRenderParam_.oOutputChannels_ = decorrOutputChannelPointers_;
 					jobParameterCarrier_.objectRenderParam_.toDecorr_ = true;
 
 					// Set flag hasDecorrObjects to true, to indicate presence of decorr object(s).
@@ -1291,7 +1290,6 @@ namespace ImmersiveAudioBitstream
 					// For all other cases, Decorr == OFF.
 					// Route rendered output as normal.
 					//
-					jobParameterCarrier_.objectRenderParam_.oOutputChannels_ = oOutputChannels;
 					jobParameterCarrier_.objectRenderParam_.toDecorr_ = false;
 				}
 
@@ -1305,7 +1303,6 @@ namespace ImmersiveAudioBitstream
 
 				// Set up bed params
 				jobParameterCarrier_.bedRenderParam_.iIABBed_ = (dynamic_cast<IABBedDefinition*>(frameSubElements[i]));				// bed to be rendered
-				jobParameterCarrier_.bedRenderParam_.oOutputChannels_ = oOutputChannels;
 
 				// Push to job queue
 				renderJobQueue_.push(jobParameterCarrier_);

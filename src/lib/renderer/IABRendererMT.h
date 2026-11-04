@@ -646,7 +646,6 @@ namespace ImmersiveAudioBitstream
 	*/
 	struct ObjectRendererMTWorkerParam {
 		const IABObjectDefinition* iIABObject_;						// object to be rendered
-		IABSampleType **oOutputChannels_;							// output buffers
 		IABRenderedOutputChannelCountType iOutputChannelCount_;		// number of channels
 		IABRenderedOutputSampleCountType iOutputSampleBufferCount_; // frame sample count
 		bool toDecorr_;												// the worker renders into its own decorrelation outputs, not its normal ones
