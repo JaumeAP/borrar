@@ -29,6 +29,8 @@ struct ObjectSpec
 
 // When set, the decorrelated object has gain 0 (DecorrelatedObjectIsHeard).
 bool gMuteDecorrelated = false;
+// When set, the frames after the first have one object only (FewerObjectsLater).
+bool gFewerLater = false;
 
 // The objects of the test: distinct positions, one with spread, one with snap, one with zone gains, one decorrelated.
 std::vector<ObjectSpec> Objects(uint32_t iFrame)
@@ -48,6 +50,10 @@ std::vector<ObjectSpec> Objects(uint32_t iFrame)
     if (gMuteDecorrelated)
     {
         objects[4].gain = 0.0f;
+    }
+    if (gFewerLater && iFrame > 0)
+    {
+        objects.resize(1);
     }
     return objects;
 }
@@ -241,6 +247,17 @@ TEST(IABRendererMTAccumulation, DecorrelatedObjectIsHeard)
         difference += double(heard[i] - muted[i]) * (heard[i] - muted[i]);
     }
     EXPECT_GT(difference, 1e-3);
+}
+
+// Frame 0 keeps every thread busy, the later frames give work to one: the idle threads still hold frame 0's outputs,
+// which must not be added again.
+TEST(IABRendererMTAccumulation, FewerObjectsLater)
+{
+    gFewerLater = true;
+    std::vector<float> const one = Render(1, false, true, kIABSampleRate_48000Hz, 2000);
+    std::vector<float> const many = Render(4, false, true, kIABSampleRate_48000Hz, 2000);
+    gFewerLater = false;
+    ExpectSame(one, many, true);
 }
 
 TEST(IABRendererMTAccumulation, At96k)

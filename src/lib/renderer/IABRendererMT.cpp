@@ -131,6 +131,24 @@ void *MTRenderThreadWorker( void *iParam )
 	
 		iabError iabReturnCode = kIABNoError;
 
+		// The first object or bed job of a frame on this thread: clear what it rendered in an earlier frame, which the frame
+		// thread has added into that frame's outputs already.
+		if ((job.elementType_ == kIABElementID_ObjectDefinition || job.elementType_ == kIABElementID_BedDefinition) &&
+			myThreadParam->workedFrame_ != job.frame_)
+		{
+			if (myThreadParam->wroteOutput_)
+			{
+				memset(myThreadParam->threadOutput_[0], 0, sizeof(IABSampleType) * myThreadParam->threadOutputSamples_);
+			}
+			if (myThreadParam->wroteDecorr_)
+			{
+				memset(myThreadParam->threadDecorrOutput_[0], 0, sizeof(IABSampleType) * myThreadParam->threadOutputSamples_);
+			}
+			myThreadParam->wroteOutput_ = false;
+			myThreadParam->wroteDecorr_ = false;
+			myThreadParam->workedFrame_ = job.frame_;
+		}
+
 		// Now let's do the claimed job
 		//
 		if (job.elementType_ == kIABElementID_AudioDataDLC)
@@ -789,6 +807,8 @@ namespace ImmersiveAudioBitstream
 			threadFunctionParameters_[i]->threadDecorrOutput_ = &threadOutputPointers_[(2 * i + 1) * threadChannels];
 			threadFunctionParameters_[i]->wroteOutput_ = false;
 			threadFunctionParameters_[i]->wroteDecorr_ = false;
+			threadFunctionParameters_[i]->workedFrame_ = 0; // frames count from 1
+			threadFunctionParameters_[i]->threadOutputSamples_ = threadChannels * kIABMaxFrameSampleCount;
 
 			iabAssetDecoders_[i]->SetUp(assetDecoderParam);
 			iabObjectRenderers_[i]->SetUp(objectRendererParam);
@@ -809,6 +829,8 @@ namespace ImmersiveAudioBitstream
 		//
 		jobParameterCarrier_.objectRenderParam_.iOutputChannelCount_ = numRendererOutputChannels_;
 		jobParameterCarrier_.bedRenderParam_.iOutputChannelCount_ = numRendererOutputChannels_;
+		frameIndex_ = 0;
+		jobParameterCarrier_.frame_ = 0;
 
 		// Create threadpool (containing threadPoolSize_ of threads)
 		for (uint32_t i = 0; i < threadPoolSize_; i++)
@@ -1224,6 +1246,10 @@ namespace ImmersiveAudioBitstream
 
 		// Resume to prepare next batch of queue.
 
+		// The object and bed jobs of this frame carry its number (see ThreadWorkerFunctionParam::workedFrame_).
+		frameIndex_++;
+		jobParameterCarrier_.frame_ = frameIndex_;
+
 		// lock mutex for adding objects and beds to job queue
 		jobQueueMutex.lock();
 
@@ -1343,19 +1369,21 @@ namespace ImmersiveAudioBitstream
 		// unlock jobCountMutex
 		jobCountMutex.unlock();
 
-		// Every thread rendered into its own outputs: add them into the frame's, in thread order, and clear them for the
-		// next frame (also after an error, so that nothing is left for the next frame).
+		// Every thread that worked on this frame rendered into its own outputs: add them into the frame's, in thread order
+		// (also after an error). Each thread clears its outputs itself, on its first job of a later frame.
 		for (uint32_t t = 0; t < threadPoolSize_; t++)
 		{
 			ThreadWorkerFunctionParam &thread = *threadFunctionParameters_[t];
+			if (thread.workedFrame_ != frameIndex_)
+			{
+				continue; // no job of this frame: what it holds is from an earlier frame, already added
+			}
 			if (thread.wroteOutput_)
 			{
 				for (uint32_t c = 0; c < iOutputChannelCount; c++)
 				{
 					vectDSP_->add(oOutputChannels[c], thread.threadOutput_[c], oOutputChannels[c], frameSampleCount_);
-					memset(thread.threadOutput_[c], 0, sizeof(IABSampleType) * frameSampleCount_);
 				}
-				thread.wroteOutput_ = false;
 			}
 			if (thread.wroteDecorr_)
 			{
@@ -1363,9 +1391,7 @@ namespace ImmersiveAudioBitstream
 				{
 					vectDSP_->add(decorrOutputChannelPointers_[c], thread.threadDecorrOutput_[c], decorrOutputChannelPointers_[c],
 					              frameSampleCount_);
-					memset(thread.threadDecorrOutput_[c], 0, sizeof(IABSampleType) * frameSampleCount_);
 				}
-				thread.wroteDecorr_ = false;
 			}
 		}
 
