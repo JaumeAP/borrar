@@ -329,6 +329,10 @@ namespace IABVBAP
 		/// Pointer to as array of RenderSpeaker(s) that are set up according to rendererConfiguration_, including virtual speakers
 		const std::vector<RenderUtils::RenderSpeaker> *renderSpeakers_;
 
+		/// SpeakerDownmix's table, built on its first call (the configuration does not change): per speaker, the renderer
+		/// output index of each entry of its downmix_, in order (GetRendererOutputIndexbyChannel of the entry's channel).
+		std::vector<std::vector<int32_t> > downmixOutputIndex_;
+
 		/// Store index for LFE speaker after VBAP config with rendererConfiguration_
 		int32_t speakerLFEIndex_;
 

@@ -306,6 +306,24 @@ namespace IABVBAP
 		//
 		std::fill(oChannelGains.begin(), oChannelGains.end(), 0.0f);
 
+		// The output index of every downmix entry, looked up once: the two map lookups of the configuration on every entry
+		// of every sub-block were a large part of the render.
+		if (downmixOutputIndex_.size() != speakerCount)
+		{
+			std::vector<std::vector<int32_t> > table(speakerCount);
+			for (uint32_t speaker = 0; speaker < speakerCount; speaker++)
+			{
+				std::vector<RenderUtils::DownmixValue> const &downmix = renderSpeakers_->at(speaker).downmix_;
+				for (std::size_t k = 0; k < downmix.size(); k++)
+				{
+					int32_t index = -1;
+					rendererConfiguration_->GetRendererOutputIndexbyChannel(downmix[k].ch_, index);
+					table[speaker].push_back(index); // -1 (no such channel) is refused below, as the lookup refused it
+				}
+			}
+			downmixOutputIndex_.swap(table);
+		}
+
 		// Downmix processing from speakerGains to channelGains
 		for (uint32_t speaker = 0; speaker < speakerCount; speaker++)
 		{
@@ -331,7 +349,8 @@ namespace IABVBAP
                 // To mix speaker gains to correct output channel, use RendererConfigurationFile::GetRendererOutputIndexbyChannel
                 // to get renderer output index associated with the speaker's channel index "chan"
                 // indicates channel position in the rendered output buffer block
-                if (RenderUtils::kNoRendererConfigurationError != rendererConfiguration_->GetRendererOutputIndexbyChannel((*iter).ch_, outputIndex))
+                outputIndex = downmixOutputIndex_[speaker][iter - renderSpeakers_->at(speaker).downmix_.begin()];
+                if (outputIndex < 0)
                 {
                     // Error mapping config file speaker channel number
                     return kVBAPParameterOutOfBoundsError;
