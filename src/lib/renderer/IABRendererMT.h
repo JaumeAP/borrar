@@ -1117,6 +1117,7 @@ namespace ImmersiveAudioBitstream
 		ObjectRendererMTWorkerParam objectRenderParam_;				// parameters for object rendering
 		BedRendererMTWorkerParam bedRenderParam_;					// parameters for bed rendering
 		AssetDecoderMTWorkerParam assetDecodeParam_;				// parameters for asset decoding
+		uint64_t frame_;											// the frame of an object or bed job (IABRendererMT::frameIndex_)
 	};
 
 	class IABRendererMT;  // forward declaration
@@ -1135,8 +1136,12 @@ namespace ImmersiveAudioBitstream
 		// takes; the frame thread adds them into the frame's outputs once the jobs are done, and clears them.
 		IABSampleType **threadOutput_;
 		IABSampleType **threadDecorrOutput_;						// the same for the objects routed to decorrelation
-		bool wroteOutput_;											// set by the thread, read and cleared by the frame thread
+		bool wroteOutput_;											// set by the thread in workedFrame_, read by the frame thread
 		bool wroteDecorr_;
+		// The last frame the thread rendered into its outputs. On its first job of a later frame the thread clears them
+		// (the frame thread has added them already), so the frame thread does not; it adds only the threads of its frame.
+		uint64_t workedFrame_;
+		std::size_t threadOutputSamples_;							// samples of one set of outputs, contiguous from [0]
 	};
 
     /**
@@ -1424,6 +1429,9 @@ namespace ImmersiveAudioBitstream
 		// threadDecorrOutput_ point into them): numRendererOutputChannels_ channels of kIABMaxFrameSampleCount each.
 		std::vector<IABSampleType> threadOutputBuffer_;
 		std::vector<IABSampleType*> threadOutputPointers_;
+
+		// Frames rendered so far; the object and bed jobs of a frame carry it.
+		uint64_t frameIndex_;
 
 		// Mutex for accessing cross-frame gains cache.
 		IABMutex gainsHistoryMutex;
