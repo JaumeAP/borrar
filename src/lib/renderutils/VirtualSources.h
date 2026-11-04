@@ -50,21 +50,10 @@ namespace RenderUtils
                    const std::vector<VirtualSource>::const_iterator &fEnd,
                    std::vector<float> &pGains);
 
-        // The tree in preorder, for averageGainsOverRange: a node's gains are fFlatGains[node * gain count].
-        struct FlatNode
-        {
-            int fThetaIndex;
-            int fCount;
-            int fLeft;      // -1 for a leaf
-            int fRight;     // -1 if none
-        };
-
-        std::vector<FlatNode> fFlatNodes;
-        std::vector<float> fFlatGains;
-
-        int flatten(const VirtualSourceTree &pTree);
-
-        int averageGainsOverRange(int pNode, int pLow, int pHigh, int pMin, int pMax, float *pGains) const;
+        // The leaves in order, for averageGainsOverRange: their theta indices, and in double the sum of the gains of
+        // the leaves before each one (fPrefixGains[k * gain count], one row more than leaves).
+        std::vector<int> fLeafThetaIndices;
+        std::vector<double> fPrefixGains;
 
 
     public:

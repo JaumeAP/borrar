@@ -797,8 +797,9 @@ namespace IABVBAP
 		// integrate over longitudes
 		std::vector<RenderUtils::LongitudeVirtualSources>::const_iterator iter = iVirtualSources.fLongitudes.begin();
 
-		// One working buffer for every longitude, cleared before each (it was allocated for each).
-		std::vector<float> tmpSpeakerGains(oSpeakerGains.size(), 0.0f);
+		// Each longitude's ranges are added straight into oSpeakerGains (they went through a cleared buffer per
+		// longitude, added afterwards: the same sum in another order).
+		std::vector<float> &tmpSpeakerGains = oSpeakerGains;
 
 		while (iter != iVirtualSources.fLongitudes.end())
 		{
@@ -822,8 +823,6 @@ namespace IABVBAP
 					thetamin_i = 0;
 					thetamax_i = (*iter).fMaxThetaIndex;
 				}
-
-				std::fill(tmpSpeakerGains.begin(), tmpSpeakerGains.end(), 0.0f);
 
 				if (thetamax_i > (*iter).fMaxThetaIndex)
 				{
@@ -857,8 +856,6 @@ namespace IABVBAP
 				{
 					oFoundSources += (*iter).fVirtualSources->averageGainsOverRange(thetamin_i, thetamax_i, 0, (*iter).fMaxThetaIndex, tmpSpeakerGains);
 				}
-
-				std::transform(tmpSpeakerGains.begin(), tmpSpeakerGains.end(), oSpeakerGains.begin(), oSpeakerGains.begin(), std::plus<float>());
 			}
 
 			iter++;

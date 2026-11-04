@@ -74,33 +74,39 @@ namespace RenderUtils
 
         build(fStart, fEnd, temp);
 
-        fFlatNodes.clear();
-        fFlatGains.clear();
-        flatten(*this);
-    }
+        // Prefix sums of the leaves, when they come in strictly increasing theta order (the tree's own assumption).
+        fLeafThetaIndices.clear();
+        fPrefixGains.clear();
 
+        std::size_t const count = temp.size();
+        bool sorted = true;
 
-    int VirtualSourceTree::flatten(const VirtualSourceTree &pTree)
-    {
-        int const node = static_cast<int>(fFlatNodes.size());
-        FlatNode const flat = {pTree.fRoot.fThetaIndex, pTree.fRoot.fCount, -1, -1};
-
-        fFlatNodes.push_back(flat);
-        fFlatGains.insert(fFlatGains.end(), pTree.fRoot.fSpeakerGains.begin(), pTree.fRoot.fSpeakerGains.end());
-
-        if (pTree.fLeftVirtualSources)
+        for (std::vector<VirtualSource>::const_iterator i = fStart; i != fEnd; i++)
         {
-            int const left = flatten(*pTree.fLeftVirtualSources);
-            fFlatNodes[node].fLeft = left;
+            if ((*i).fSpeakerGains.size() != count || (!fLeafThetaIndices.empty() && (*i).fThetaIndex <= fLeafThetaIndices.back()))
+            {
+                sorted = false;
+                break;
+            }
+            fLeafThetaIndices.push_back((*i).fThetaIndex);
         }
 
-        if (pTree.fRightVirtualSources)
+        if (!sorted)
         {
-            int const right = flatten(*pTree.fRightVirtualSources);
-            fFlatNodes[node].fRight = right;
+            fLeafThetaIndices.clear();
+            return;
         }
 
-        return node;
+        fPrefixGains.assign((fLeafThetaIndices.size() + 1) * count, 0.0);
+        std::size_t k = 0;
+
+        for (std::vector<VirtualSource>::const_iterator i = fStart; i != fEnd; i++, k++)
+        {
+            for (std::size_t g = 0; g < count; g++)
+            {
+                fPrefixGains[(k + 1) * count + g] = fPrefixGains[k * count + g] + static_cast<double>((*i).fSpeakerGains[g]);
+            }
+        }
     }
 
 
@@ -159,10 +165,31 @@ namespace RenderUtils
 
     int VirtualSourceTree::averageGainsOverRange(int pQueryLow, int pQueryHigh, int pMin, int pMax, std::vector<float> &pSpeakerGains) const
     {
-        // The same walk over the contiguous copy of the tree: the same nodes added in the same order.
-        if (!fFlatNodes.empty() && pSpeakerGains.size() == fRoot.fSpeakerGains.size())
+        // Over the whole tree the walk adds the leaves whose theta index is in [pQueryLow, pQueryHigh]: take their sum
+        // from the prefix sums instead, one subtraction per gain. The double sum rounds to within a few ulp of the
+        // float sum of the walk, not bit for bit.
+        std::size_t const count = fRoot.fSpeakerGains.size();
+
+        if (!fLeafThetaIndices.empty() && pSpeakerGains.size() == count
+            && pMin <= fLeafThetaIndices.front() && pMax >= fLeafThetaIndices.back())
         {
-            return averageGainsOverRange(0, pQueryLow, pQueryHigh, pMin, pMax, pSpeakerGains.data());
+            std::size_t const first = std::lower_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryLow) - fLeafThetaIndices.begin();
+            std::size_t const last = std::upper_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryHigh) - fLeafThetaIndices.begin();
+
+            if (last <= first)
+            {
+                return 0;
+            }
+
+            double const *high = &fPrefixGains[last * count];
+            double const *low = &fPrefixGains[first * count];
+
+            for (std::size_t g = 0; g < count; g++)
+            {
+                pSpeakerGains[g] += static_cast<float>(high[g] - low[g]);
+            }
+
+            return static_cast<int>(last - first);
         }
 
         /* if node, is the tree interval is within the search interval */
@@ -194,39 +221,6 @@ namespace RenderUtils
         return rslt;
     }
 
-
-    int VirtualSourceTree::averageGainsOverRange(int pNode, int pQueryLow, int pQueryHigh, int pMin, int pMax, float *pSpeakerGains) const
-    {
-        FlatNode const &node = fFlatNodes[pNode];
-
-        if (( pQueryLow <= pMin && pQueryHigh >= pMax ) ||
-                (node.fLeft < 0 && pQueryLow <= node.fThetaIndex && pQueryHigh >= node.fThetaIndex) )
-        {
-            std::size_t const count = fRoot.fSpeakerGains.size();
-            float const *gains = &fFlatGains[pNode * count];
-
-            for (std::size_t i = 0; i < count; i++)
-            {
-                pSpeakerGains[i] = gains[i] + pSpeakerGains[i];
-            }
-
-            return node.fCount;
-        }
-
-        int rslt = 0;
-
-        if (pQueryLow <= node.fThetaIndex && node.fLeft >= 0)
-        {
-            rslt += averageGainsOverRange(node.fLeft, pQueryLow, pQueryHigh, pMin, node.fThetaIndex, pSpeakerGains);
-        }
-
-        if (pQueryHigh > node.fThetaIndex && node.fRight >= 0)
-        {
-            rslt += averageGainsOverRange(node.fRight, pQueryLow, pQueryHigh, node.fThetaIndex, pMax, pSpeakerGains);
-        }
-
-        return rslt;
-    }
 
 
     std::ostream& operator<<(std::ostream& pStream, const HemisphereVirtualSources& pSources)

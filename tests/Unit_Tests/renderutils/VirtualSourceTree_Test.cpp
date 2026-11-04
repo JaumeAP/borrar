@@ -62,7 +62,9 @@
  *  - Top and bottom indices evaluate to 1
  *
  */
+#include <algorithm>
 #include <cmath>
+#include <iostream>
 
 #include "gtest/gtest.h"
 #include "renderutils/VirtualSources.h"
@@ -160,4 +162,88 @@ TEST_F(VirtualSourcesTreeTest, AverageGainsOverRangeOneBottom)
     int one = rendererVirtualSource_->fVirtualSources->averageGainsOverRange(0, 0, 0, rendererVirtualSource_->fMaxThetaIndex, tmp);
 
     EXPECT_EQ(one, 1);
+}
+
+// The walk over the linked nodes, as a reference for the prefix sums that averageGainsOverRange uses.
+static int ReferenceAverageGainsOverRange(const VirtualSourceTree &tree, int low, int high, int min, int max, std::vector<float> &gains)
+{
+    if ((low <= min && high >= max) ||
+        (!tree.fLeftVirtualSources && low <= tree.fRoot.fThetaIndex && high >= tree.fRoot.fThetaIndex))
+    {
+        for (size_t i = 0; i < gains.size(); i++)
+        {
+            gains[i] = tree.fRoot.fSpeakerGains[i] + gains[i];
+        }
+        return tree.fRoot.fCount;
+    }
+
+    int found = 0;
+    if (low <= tree.fRoot.fThetaIndex && tree.fLeftVirtualSources)
+    {
+        found += ReferenceAverageGainsOverRange(*tree.fLeftVirtualSources, low, high, min, tree.fRoot.fThetaIndex, gains);
+    }
+    if (high > tree.fRoot.fThetaIndex && tree.fRightVirtualSources)
+    {
+        found += ReferenceAverageGainsOverRange(*tree.fRightVirtualSources, low, high, tree.fRoot.fThetaIndex, max, gains);
+    }
+    return found;
+}
+
+// Every query range over trees of 1 to 70 sources with uneven gains, added onto a buffer that already holds gains:
+// the same count as the walk over the linked nodes, and gains within 1e-6 of the magnitudes summed.
+TEST(VirtualSourceTreePrefix, SameGainsAsTheLinkedWalk)
+{
+    int const gainCount = 13;
+    long mismatches = 0;
+    double worst = 0.0;
+
+    for (int n = 1; n <= 70; n++)
+    {
+        std::vector<VirtualSource> sources(n);
+        for (int j = 0; j < n; j++)
+        {
+            sources[j].fThetaIndex = j;
+            sources[j].fTheta = 0.1f * j;
+            sources[j].fSpeakerGains.resize(gainCount);
+            for (int g = 0; g < gainCount; g++)
+            {
+                sources[j].fSpeakerGains[g] = std::sin(0.37f * (j * gainCount + g + n)) / 3.0f;
+            }
+        }
+
+        VirtualSourceTree tree(gainCount);
+        tree.build(sources.begin(), sources.end());
+
+        for (int low = -2; low <= n + 1; low++)
+        {
+            for (int high = low - 1; high <= n + 1; high++)
+            {
+                std::vector<float> flat(gainCount), linked(gainCount);
+                for (int g = 0; g < gainCount; g++)
+                {
+                    flat[g] = linked[g] = 0.01f * g;
+                }
+
+                int const flatCount = tree.averageGainsOverRange(low, high, 0, n - 1, flat);
+                int const linkedCount = ReferenceAverageGainsOverRange(tree, low, high, 0, n - 1, linked);
+
+                mismatches += (flatCount != linkedCount);
+                for (int g = 0; g < gainCount; g++)
+                {
+                    double magnitude = std::fabs(0.01 * g);
+                    for (int j = std::max(low, 0); j <= std::min(high, n - 1); j++)
+                    {
+                        magnitude += std::fabs(sources[j].fSpeakerGains[g]);
+                    }
+
+                    double const error = std::fabs(double(flat[g]) - double(linked[g]));
+                    worst = std::max(worst, error / (magnitude + 1e-30));
+                    mismatches += (error > 1e-6 * magnitude);
+                }
+            }
+        }
+    }
+
+    std::cout << "worst error relative to the magnitudes summed: " << worst << std::endl;
+    EXPECT_EQ(0, mismatches);
 }
