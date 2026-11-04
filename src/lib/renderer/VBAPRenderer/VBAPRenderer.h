@@ -336,6 +336,9 @@ namespace IABVBAP
 		/// output index of each entry of its downmix_, in order (GetRendererOutputIndexbyChannel of the entry's channel).
 		std::vector<std::vector<int32_t> > downmixOutputIndex_;
 
+		// RenderExtent's working buffer, kept between calls so that each render allocates nothing.
+		std::vector<float> extentGains_;
+
 		/// Store index for LFE speaker after VBAP config with rendererConfiguration_
 		int32_t speakerLFEIndex_;
 

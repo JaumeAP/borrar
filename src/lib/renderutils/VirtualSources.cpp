@@ -77,6 +77,7 @@ namespace RenderUtils
         // Prefix sums of the leaves, when they come in strictly increasing theta order (the tree's own assumption).
         fLeafThetaIndices.clear();
         fPrefixGains.clear();
+        fLeavesContiguous = false;
 
         std::size_t const count = temp.size();
         bool sorted = true;
@@ -96,6 +97,8 @@ namespace RenderUtils
             fLeafThetaIndices.clear();
             return;
         }
+
+        fLeavesContiguous = fLeafThetaIndices.back() - fLeafThetaIndices.front() + 1 == static_cast<int>(fLeafThetaIndices.size());
 
         fPrefixGains.assign((fLeafThetaIndices.size() + 1) * count, 0.0);
         std::size_t k = 0;
@@ -173,8 +176,22 @@ namespace RenderUtils
         if (!fLeafThetaIndices.empty() && pSpeakerGains.size() == count
             && pMin <= fLeafThetaIndices.front() && pMax >= fLeafThetaIndices.back())
         {
-            std::size_t const first = std::lower_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryLow) - fLeafThetaIndices.begin();
-            std::size_t const last = std::upper_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryHigh) - fLeafThetaIndices.begin();
+            std::size_t first;
+            std::size_t last;
+
+            if (fLeavesContiguous)
+            {
+                // Leaves k = 0 .. n-1 have theta index front + k: the positions by arithmetic, no search.
+                long const n = static_cast<long>(fLeafThetaIndices.size());
+                long const front = fLeafThetaIndices.front();
+                first = static_cast<std::size_t>(std::min(std::max(static_cast<long>(pQueryLow) - front, 0L), n));
+                last = static_cast<std::size_t>(std::min(std::max(static_cast<long>(pQueryHigh) - front + 1, 0L), n));
+            }
+            else
+            {
+                first = std::lower_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryLow) - fLeafThetaIndices.begin();
+                last = std::upper_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryHigh) - fLeafThetaIndices.begin();
+            }
 
             if (last <= first)
             {

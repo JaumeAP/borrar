@@ -54,6 +54,7 @@ namespace RenderUtils
         // the leaves before each one (fPrefixGains[k * gain count], one row more than leaves).
         std::vector<int> fLeafThetaIndices;
         std::vector<double> fPrefixGains;
+        bool fLeavesContiguous = false;     // theta indices front, front + 1, ...: positions without a search
 
 
     public:

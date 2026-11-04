@@ -725,7 +725,8 @@ namespace IABVBAP
 		float phi = std::acos(center3.getZ());
 		float theta = _renderer_atan2(center3.getX(), center3.getY());
 
-		std::vector<float> tmpSpeakerGains(oSpeakerGains.size(), 0.0f);		// working buffer to save results from RenderHemisphere() or RenderPatch() below
+		extentGains_.assign(oSpeakerGains.size(), 0.0f);
+		std::vector<float> &tmpSpeakerGains = extentGains_;				// working buffer to save results from RenderHemisphere() or RenderPatch() below
 		int32_t foundVirtualSources = 0;
 		vbapError err;
 
