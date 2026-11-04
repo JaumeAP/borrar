@@ -73,6 +73,34 @@ namespace RenderUtils
         std::vector<float> temp((*fStart).fSpeakerGains.size(), 0.0f);
 
         build(fStart, fEnd, temp);
+
+        fFlatNodes.clear();
+        fFlatGains.clear();
+        flatten(*this);
+    }
+
+
+    int VirtualSourceTree::flatten(const VirtualSourceTree &pTree)
+    {
+        int const node = static_cast<int>(fFlatNodes.size());
+        FlatNode const flat = {pTree.fRoot.fThetaIndex, pTree.fRoot.fCount, -1, -1};
+
+        fFlatNodes.push_back(flat);
+        fFlatGains.insert(fFlatGains.end(), pTree.fRoot.fSpeakerGains.begin(), pTree.fRoot.fSpeakerGains.end());
+
+        if (pTree.fLeftVirtualSources)
+        {
+            int const left = flatten(*pTree.fLeftVirtualSources);
+            fFlatNodes[node].fLeft = left;
+        }
+
+        if (pTree.fRightVirtualSources)
+        {
+            int const right = flatten(*pTree.fRightVirtualSources);
+            fFlatNodes[node].fRight = right;
+        }
+
+        return node;
     }
 
 
@@ -131,6 +159,11 @@ namespace RenderUtils
 
     int VirtualSourceTree::averageGainsOverRange(int pQueryLow, int pQueryHigh, int pMin, int pMax, std::vector<float> &pSpeakerGains) const
     {
+        // The same walk over the contiguous copy of the tree: the same nodes added in the same order.
+        if (!fFlatNodes.empty() && pSpeakerGains.size() == fRoot.fSpeakerGains.size())
+        {
+            return averageGainsOverRange(0, pQueryLow, pQueryHigh, pMin, pMax, pSpeakerGains.data());
+        }
 
         /* if node, is the tree interval is within the search interval */
         /* if leaf, is the leaf within the search interval */
@@ -156,6 +189,40 @@ namespace RenderUtils
         if (pQueryHigh > fRoot.fThetaIndex && fRightVirtualSources)
         {
             rslt += fRightVirtualSources->averageGainsOverRange(pQueryLow, pQueryHigh, fRoot.fThetaIndex, pMax, pSpeakerGains);
+        }
+
+        return rslt;
+    }
+
+
+    int VirtualSourceTree::averageGainsOverRange(int pNode, int pQueryLow, int pQueryHigh, int pMin, int pMax, float *pSpeakerGains) const
+    {
+        FlatNode const &node = fFlatNodes[pNode];
+
+        if (( pQueryLow <= pMin && pQueryHigh >= pMax ) ||
+                (node.fLeft < 0 && pQueryLow <= node.fThetaIndex && pQueryHigh >= node.fThetaIndex) )
+        {
+            std::size_t const count = fRoot.fSpeakerGains.size();
+            float const *gains = &fFlatGains[pNode * count];
+
+            for (std::size_t i = 0; i < count; i++)
+            {
+                pSpeakerGains[i] = gains[i] + pSpeakerGains[i];
+            }
+
+            return node.fCount;
+        }
+
+        int rslt = 0;
+
+        if (pQueryLow <= node.fThetaIndex && node.fLeft >= 0)
+        {
+            rslt += averageGainsOverRange(node.fLeft, pQueryLow, pQueryHigh, pMin, node.fThetaIndex, pSpeakerGains);
+        }
+
+        if (pQueryHigh > node.fThetaIndex && node.fRight >= 0)
+        {
+            rslt += averageGainsOverRange(node.fRight, pQueryLow, pQueryHigh, node.fThetaIndex, pMax, pSpeakerGains);
         }
 
         return rslt;
