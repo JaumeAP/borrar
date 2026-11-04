@@ -1200,6 +1200,9 @@ namespace ImmersiveAudioBitstream
 		// (the frame thread has added them already), so the frame thread does not; it adds only the threads of its frame.
 		uint64_t workedFrame_;
 		std::size_t threadOutputSamples_;							// samples of one set of outputs, contiguous from [0]
+		// Set by the frame thread, before it queues a frame's jobs, when the VBAP caches are to be reset; the thread clears
+		// its object renderer's cache (used by no other thread) before its next object job, and this flag.
+		bool clearVBAPCache_;
 	};
 
     /**
