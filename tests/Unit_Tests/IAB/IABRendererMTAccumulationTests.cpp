@@ -31,6 +31,8 @@ struct ObjectSpec
 bool gMuteDecorrelated = false;
 // When set, the frames after the first have one object only (FewerObjectsLater).
 bool gFewerLater = false;
+// Frames Render renders (VBAPCacheResetKeepsTheRender sets more).
+uint32_t gFrames = 3;
 
 // The objects of the test: distinct positions, one with spread, one with snap, one with zone gains, one decorrelated.
 std::vector<ObjectSpec> Objects(uint32_t iFrame)
@@ -167,7 +169,7 @@ IABFrameInterface *MakeFrame(uint32_t iFrame, bool iBeds, bool iObjects, IABSamp
     return frame;
 }
 
-// Renders three frames with a pool of iThreads and returns every output sample, frame after frame.
+// Renders gFrames frames with a pool of iThreads and returns every output sample, frame after frame.
 std::vector<float> Render(uint32_t iThreads, bool iBeds, bool iObjects, IABSampleRateType iRate, uint32_t iFrameSamples)
 {
     std::unique_ptr<RenderUtils::IRendererConfiguration> config(
@@ -183,7 +185,7 @@ std::vector<float> Render(uint32_t iThreads, bool iBeds, bool iObjects, IABSampl
         pointers[c] = buffers[c].data();
     }
     std::vector<float> all;
-    for (uint32_t f = 0; f < 3; ++f)
+    for (uint32_t f = 0; f < gFrames; ++f)
     {
         IABFrameInterface *frame = MakeFrame(f, iBeds, iObjects, iRate, iFrameSamples);
         EXPECT_EQ(kIABNoError, renderer->RenderIABFrame(*frame, pointers.data(), outputs, iFrameSamples));
@@ -257,6 +259,18 @@ TEST(IABRendererMTAccumulation, FewerObjectsLater)
     std::vector<float> const one = Render(1, false, true, kIABSampleRate_48000Hz, 2000);
     std::vector<float> const many = Render(4, false, true, kIABSampleRate_48000Hz, 2000);
     gFewerLater = false;
+    ExpectSame(one, many, true);
+}
+
+// 16 frames of moving objects: one thread adds about 38 extended sources to its VBAP cache per frame, so the cache
+// passes MAX_VBAP_CACHE_SIZE (250) and the thread clears it twice during the render; four threads stay below it. The
+// render through the resets is the render without them.
+TEST(IABRendererMTAccumulation, VBAPCacheResetKeepsTheRender)
+{
+    gFrames = 16;
+    std::vector<float> const one = Render(1, true, true, kIABSampleRate_48000Hz, 2000);
+    std::vector<float> const many = Render(4, true, true, kIABSampleRate_48000Hz, 2000);
+    gFrames = 3;
     ExpectSame(one, many, true);
 }
 

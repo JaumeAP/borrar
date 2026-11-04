@@ -36,6 +36,8 @@
 #include <numeric>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 
  // Header files from "RenderUtils" library
@@ -270,6 +272,8 @@ namespace IABVBAP
 				++iter;
 			}
 		}
+
+		RebuildPreviouslyRenderedIndex();
 	}
 
 	// VBAPRenderer::ResetPreviouslyRendered() implementation
@@ -277,6 +281,51 @@ namespace IABVBAP
 	{
 		// reset rendered extent source histories
 		previouslyRenderedExtendedSources_.clear();
+		previouslyRenderedIndex_.clear();
+	}
+
+	std::size_t VBAPRenderer::CacheKeyHash::operator()(CacheKey const &iKey) const
+	{
+		uint64_t hash = 1469598103934665603ULL; // FNV-1a over the bits of the six floats
+		for (std::size_t i = 0; i < iKey.size(); i++)
+		{
+			uint32_t bits;
+			std::memcpy(&bits, &iKey[i], sizeof bits);
+			hash = (hash ^ bits) * 1099511628211ULL;
+		}
+		return static_cast<std::size_t>(hash);
+	}
+
+	bool VBAPRenderer::MakeCacheKey(vbapRendererExtendedSource const &iSource, CacheKey &oKey)
+	{
+		oKey[0] = iSource.position_.x;
+		oKey[1] = iSource.position_.y;
+		oKey[2] = iSource.position_.z;
+		oKey[3] = iSource.aperture_;
+		oKey[4] = iSource.divergence_;
+		oKey[5] = iSource.extSourceGain_;
+		for (std::size_t i = 0; i < oKey.size(); i++)
+		{
+			if (oKey[i] != oKey[i])
+			{
+				return false;
+			}
+			oKey[i] += 0.0f; // -0 becomes +0, which operator== finds equal
+		}
+		return true;
+	}
+
+	void VBAPRenderer::RebuildPreviouslyRenderedIndex()
+	{
+		previouslyRenderedIndex_.clear();
+		for (std::size_t i = 0; i < previouslyRenderedExtendedSources_.size(); i++)
+		{
+			CacheKey key;
+			if (MakeCacheKey(previouslyRenderedExtendedSources_[i], key))
+			{
+				previouslyRenderedIndex_.emplace(key, i); // keeps the first entry of a key, as the linear search found it
+			}
+		}
 	}
 
 	// VBAPRenderer::GetVBAPCacheSize() implementation
@@ -525,26 +574,32 @@ namespace IABVBAP
 	{
 		iSource->touched_ = true;                                           // Set flag for source entry as being used (touched)
 		previouslyRenderedExtendedSources_.push_back((*iSource));			// Copy pushed/added to vector
+		CacheKey key;
+		if (MakeCacheKey(*iSource, key))
+		{
+			previouslyRenderedIndex_.emplace(key, previouslyRenderedExtendedSources_.size() - 1);
+		}
 	}
 
 	// VBAPRenderer::ReusePreviouslyRendered() implementation
 	bool VBAPRenderer::ReusePreviouslyRendered(vbapRendererExtendedSource* iSource)
 	{
-		bool alreadyrendered = false;
-
-		for (std::vector<vbapRendererExtendedSource>::iterator iter = previouslyRenderedExtendedSources_.begin(); iter != previouslyRenderedExtendedSources_.end(); iter++)
+		// The entry HasSameRenderingParams finds, looked up by its parameters instead of a linear search of the cache.
+		CacheKey key;
+		if (!MakeCacheKey(*iSource, key))
 		{
-			if (iter->HasSameRenderingParams(iSource))
-			{
-				iSource->renderedSpeakerGains_ = iter->renderedSpeakerGains_;    // Copy rendered speaker gains from cache
-				iSource->renderedChannelGains_ = iter->renderedChannelGains_;    // Copy rendered channel gains from cache
-				iter->touched_ = true;                                           // Mark source entry in previouslyRenderedExtendedSources_ as being used (touched)
-				alreadyrendered = true;
-				break;
-			}
+			return false;
 		}
-
-		return alreadyrendered;
+		std::unordered_map<CacheKey, std::size_t, CacheKeyHash>::const_iterator found = previouslyRenderedIndex_.find(key);
+		if (found == previouslyRenderedIndex_.end())
+		{
+			return false;
+		}
+		vbapRendererExtendedSource &entry = previouslyRenderedExtendedSources_[found->second];
+		iSource->renderedSpeakerGains_ = entry.renderedSpeakerGains_;    // Copy rendered speaker gains from cache
+		iSource->renderedChannelGains_ = entry.renderedChannelGains_;    // Copy rendered channel gains from cache
+		entry.touched_ = true;                                           // Mark source entry in previouslyRenderedExtendedSources_ as being used (touched)
+		return true;
 	}
 
 	// =================================================================================
@@ -742,6 +797,9 @@ namespace IABVBAP
 		// integrate over longitudes
 		std::vector<RenderUtils::LongitudeVirtualSources>::const_iterator iter = iVirtualSources.fLongitudes.begin();
 
+		// One working buffer for every longitude, cleared before each (it was allocated for each).
+		std::vector<float> tmpSpeakerGains(oSpeakerGains.size(), 0.0f);
+
 		while (iter != iVirtualSources.fLongitudes.end())
 		{
 			float sigma;
@@ -765,7 +823,7 @@ namespace IABVBAP
 					thetamax_i = (*iter).fMaxThetaIndex;
 				}
 
-				std::vector<float> tmpSpeakerGains(oSpeakerGains.size(), 0.0f);
+				std::fill(tmpSpeakerGains.begin(), tmpSpeakerGains.end(), 0.0f);
 
 				if (thetamax_i > (*iter).fMaxThetaIndex)
 				{

@@ -180,6 +180,11 @@ void *MTRenderThreadWorker( void *iParam )
 			// Capture error, but current unhandled.
 			// (Ming note: how to handle errors from thread worker is left as future improvement.)
 			// Into this thread's own outputs; the frame thread adds them into the frame's.
+			if (myThreadParam->clearVBAPCache_)
+			{
+				myObjectRenderer->ClearSubblockVBAPCache();
+				myThreadParam->clearVBAPCache_ = false;
+			}
 			bool const toDecorr = job.objectRenderParam_.toDecorr_;
 			(toDecorr ? myThreadParam->wroteDecorr_ : myThreadParam->wroteOutput_) = true;
 			IABSampleType **outputs = toDecorr ? myThreadParam->threadDecorrOutput_ : myThreadParam->threadOutput_;
@@ -818,6 +823,7 @@ namespace ImmersiveAudioBitstream
 			threadFunctionParameters_[i]->wroteDecorr_ = false;
 			threadFunctionParameters_[i]->workedFrame_ = 0; // frames count from 1
 			threadFunctionParameters_[i]->threadOutputSamples_ = threadChannels * kIABMaxFrameSampleCount;
+			threadFunctionParameters_[i]->clearVBAPCache_ = false;
 
 			iabAssetDecoders_[i]->SetUp(assetDecoderParam);
 			iabObjectRenderers_[i]->SetUp(objectRendererParam);
@@ -1140,9 +1146,11 @@ namespace ImmersiveAudioBitstream
 
 		if (largestVBAPCacheSize > MAX_VBAP_CACHE_SIZE)
 		{
+			// Each thread clears its own cache before its next object job (ThreadWorkerFunctionParam::clearVBAPCache_):
+			// freeing every entry of every thread here held up the frame.
 			for (uint32_t i = 0; i < threadPoolSize_; i++)
 			{
-				iabObjectRenderers_[i]->ClearSubblockVBAPCache();
+				threadFunctionParameters_[i]->clearVBAPCache_ = true;
 			}
 		}
 
