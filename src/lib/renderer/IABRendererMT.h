@@ -420,6 +420,20 @@ namespace ImmersiveAudioBitstream
 	};
 
 	/**
+	* The pan of one object sub-block as the sub-block renderer reads it, from an IABObjectSubBlock or from an
+	* IABFloatPan (RenderFloatFrame): the same value types, so both render the same.
+	*/
+	struct SubBlockPan
+	{
+		uint8_t panInfoExists = 1;
+		IABGain gain;
+		CartesianPosInUnitCube position;
+		IABObjectSpread spread;
+		IABObjectSnap snap = IABObjectSnap();
+		IABObjectZoneGain9 zones = IABObjectZoneGain9();
+	};
+
+	/**
 	*
 	* IAB Object Subblock Renderer class. For rendering an IAB object sub-block.
 	*
@@ -427,6 +441,19 @@ namespace ImmersiveAudioBitstream
 	class IABObjectSubBlockRenderer
 	{
 	public:
+
+		// The pan of a sub-block, read from an IAB sub-block or from a float pan (quantised as the IAB values are).
+		static void PanOf(const IABObjectSubBlockInterface& iIABObjectSubBlock, SubBlockPan& oPan);
+		static void PanOf(const IABFloatPan& iPan, SubBlockPan& oPan);
+
+		// RenderIABObjectSubBlock on a pan already read.
+		iabError RenderSubBlockPan(const SubBlockPan& iPan
+			, IABGAINSPROC::EntityPastChannelGains& ioChannelGains
+			, IABVBAP::vbapRendererObject *iVbapObject
+			, IABSampleType *iAssetSamples
+			, IABSampleType **oOutputChannels
+			, IABRenderedOutputChannelCountType iOutputChannelCount
+			, IABRenderedOutputSampleCountType iOutputSampleBufferCount);
 
 		// Default Constructor
         IABObjectSubBlockRenderer(std::vector<IABMutex>& perChOutputMutex);
@@ -566,10 +593,25 @@ namespace ImmersiveAudioBitstream
 			, IABRenderedOutputChannelCountType iOutputChannelCount
 			, IABRenderedOutputSampleCountType iOutputSampleBufferCount);
 
+		// The same for an object of a float frame (RenderFloatFrame): no conditional object, one pan per sub-block.
+		iabError RenderFloatObject(const IABFloatObject& iObject
+			, IABSampleType **oOutputChannels
+			, IABRenderedOutputChannelCountType iOutputChannelCount
+			, IABRenderedOutputSampleCountType iOutputSampleBufferCount);
+
 	private:
 
 		// *** Private member functions
 		// ***
+
+		// Renders the pans_ of an object (one per sub-block) from its samples; both entries end here.
+		iabError RenderPans(IABMetadataIDType iObjectMetaID
+			, IABSampleType *iSamples
+			, IABSampleType **oOutputChannels
+			, IABRenderedOutputChannelCountType iOutputChannelCount);
+
+		// The pans of the object being rendered, reused from object to object.
+		std::vector<SubBlockPan> pans_;
 
 		// Reset vbapObject_ to default state
 		// This should be called before using it to render a new object
@@ -646,6 +688,7 @@ namespace ImmersiveAudioBitstream
 	*/
 	struct ObjectRendererMTWorkerParam {
 		const IABObjectDefinition* iIABObject_;						// object to be rendered
+		const IABFloatObject* iFloatObject_;						// or the object of a float frame (then iIABObject_ is NULL)
 		IABRenderedOutputChannelCountType iOutputChannelCount_;		// number of channels
 		IABRenderedOutputSampleCountType iOutputSampleBufferCount_; // frame sample count
 		bool toDecorr_;												// the worker renders into its own decorrelation outputs, not its normal ones
@@ -774,6 +817,14 @@ namespace ImmersiveAudioBitstream
 		// pointed to by "oOutputChannel".
 		// 
 		iabError RenderIABChannel(const IABChannelInterface& iIABChannel
+			, IABSampleType *iAssetSamples
+			, IABSampleType **oOutputChannels
+			, IABRenderedOutputChannelCountType iOutputChannelCount
+			, IABRenderedOutputSampleCountType iOutputSampleBufferCount);
+
+		// The same from the channel's ID and linear gain (the gain as IABGain gives it); both entries end here.
+		iabError RenderChannel(IABChannelIDType iChannelID
+			, float iGain
 			, IABSampleType *iAssetSamples
 			, IABSampleType **oOutputChannels
 			, IABRenderedOutputChannelCountType iOutputChannelCount
@@ -995,6 +1046,12 @@ namespace ImmersiveAudioBitstream
 			, IABRenderedOutputChannelCountType iOutputChannelCount
 			, IABRenderedOutputSampleCountType iOutputSampleBufferCount);
 
+		// The same for a bed of a float frame (RenderFloatFrame): no conditional bed, no remap.
+		iabError RenderFloatBed(const IABFloatBed& iBed
+			, IABSampleType **oOutputChannels
+			, IABRenderedOutputChannelCountType iOutputChannelCount
+			, IABRenderedOutputSampleCountType iOutputSampleBufferCount);
+
 	private:
 
 		// *** Member variables
@@ -1028,6 +1085,7 @@ namespace ImmersiveAudioBitstream
 	*/
 	struct BedRendererMTWorkerParam {
 		const IABBedDefinition* iIABBed_;							// bed to be rendered
+		const IABFloatBed* iFloatBed_;								// or the bed of a float frame (then iIABBed_ is NULL)
 		IABSampleType **oOutputChannels_;							// output buffers
 		IABRenderedOutputChannelCountType iOutputChannelCount_;		// number of channels
 		IABRenderedOutputSampleCountType iOutputSampleBufferCount_; // frame sample count
@@ -1185,6 +1243,12 @@ namespace ImmersiveAudioBitstream
                                 , IABRenderedOutputChannelCountType iOutputChannelCount
                                 , IABRenderedOutputSampleCountType iOutputSampleBufferCount);
 
+		// See IABRendererMTInterface::RenderFloatFrame().
+		iabError RenderFloatFrame(const IABFloatFrame& iFrame
+		                          , IABSampleType **oOutputChannels
+		                          , IABRenderedOutputChannelCountType iOutputChannelCount
+		                          , IABRenderedOutputSampleCountType iOutputSampleBufferCount);
+
 		// Returns the job queue (shared by all threads)
 		std::queue<QueueJobParam>* jobQueue() { return &renderJobQueue_; }
         
@@ -1204,7 +1268,14 @@ namespace ImmersiveAudioBitstream
 
     private:
 
-		// Set up IABRendererMT based on "iConfig" 
+		// RenderIABFrame (iIABFrame) and RenderFloatFrame (iFloatFrame): one of the two is NULL.
+		iabError RenderFrame(const IABFrameInterface* iIABFrame
+		                     , const IABFloatFrame* iFloatFrame
+		                     , IABSampleType **oOutputChannels
+		                     , IABRenderedOutputChannelCountType iOutputChannelCount
+		                     , IABRenderedOutputSampleCountType iOutputSampleBufferCount);
+
+		// Set up IABRendererMT based on "iConfig"
 		// 
 		void SetUp(RenderUtils::IRendererConfiguration &iConfig);
 
