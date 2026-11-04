@@ -508,6 +508,10 @@ namespace ImmersiveAudioBitstream
 		// Interior extended source to vbap extended source conversion class instance
 		IABInterior iabInterior_;
 
+		// IAB to VBAP position and spread transform. Its constructor builds its tables, so it is built once per sub-block
+		// renderer (one per worker thread), not on every sub-block.
+		IABTransform iabTransform_;
+
 		// Object zone9 control
 		IABObjectZone9 *iabObjectZone9_;
         
