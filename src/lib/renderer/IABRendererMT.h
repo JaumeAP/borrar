@@ -112,6 +112,17 @@ namespace SMPTE
             }
             void lock()
             {
+                // Most holders keep it for one short vector add: spin a little before sleeping in the kernel.
+                for (int i = 0; i < kSpinTries; i++)
+                {
+                    if (pthread_mutex_trylock(&mutex_) == 0)
+                    {
+                        return;
+                    }
+#if defined(__aarch64__)
+                    __asm__ __volatile__("yield");
+#endif
+                }
                 int retval = pthread_mutex_lock(&mutex_);
                 assert(retval == 0);
             }
@@ -121,6 +132,7 @@ namespace SMPTE
                 assert(retval == 0);
             }
         private:
+            static const int kSpinTries = 64;
             pthread_mutex_t mutex_;
         };
     }

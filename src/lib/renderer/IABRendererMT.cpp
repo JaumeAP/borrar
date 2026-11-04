@@ -62,6 +62,7 @@
 #endif
 
 #ifdef USE_MAC_ACCELERATE
+#include <Accelerate/Accelerate.h>
 #include "coreutils/VectDSPMacAccelerate.h"
 #else
 #include "coreutils/VectDSP.h"
@@ -847,11 +848,19 @@ namespace ImmersiveAudioBitstream
 		frameIndex_ = 0;
 		jobParameterCarrier_.frame_ = 0;
 
-		// Create threadpool (containing threadPoolSize_ of threads)
+		// Create threadpool (containing threadPoolSize_ of threads). On macOS at the user-interactive QoS class: the
+		// scheduler keeps them on the performance cores first and preempts them least, so no worker straggles behind
+		// the frame barrier. Not a real-time policy, which a render that keeps every core busy could starve the system with.
+		pthread_attr_t workerAttributes;
+		pthread_attr_init(&workerAttributes);
+#ifdef __APPLE__
+		pthread_attr_set_qos_class_np(&workerAttributes, QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
 		for (uint32_t i = 0; i < threadPoolSize_; i++)
 		{
-			pthread_create(&(threads_[i]), NULL, MTRenderThreadWorker, (void*) threadFunctionParameters_[i]);
+			pthread_create(&(threads_[i]), &workerAttributes, MTRenderThreadWorker, (void*) threadFunctionParameters_[i]);
 		}
+		pthread_attr_destroy(&workerAttributes);
 	}
 
 	// IABRendererMT::GetOutputChannelCount() implementation
@@ -4170,6 +4179,55 @@ namespace IABGAINSPROC
 				// create smoothing ramp from slope
 				//
 				currentGain += slope;														// incrementing first gain one step beyond previously stored gain.
+
+#ifdef USE_MAC_ACCELERATE
+				// The same gains in one float pass straight into the output: the ramp from currentGain to targetGain
+				// over realRampPeriod samples times the input (vDSP_vrampmuladd), then targetGain times the rest
+				// (vDSP_vsma). No double ramp, no conversion, no intermediate buffer; within float rounding of the ramp.
+				{
+					uint32_t const rampSamples = (realRampPeriod < iSampleCount) ? realRampPeriod : iSampleCount;
+					float rampStep = 0.0f;
+					float rampGain = currentGain;
+
+					if (realRampPeriod >= 2)
+					{
+						rampStep = (targetGain - currentGain) / static_cast<float>(realRampPeriod - 1);
+					}
+
+					float *channelOutput = oOutputSamples[i];
+
+					perChOutputMutex_[i].lock();
+
+					if (rampSamples > 0)
+					{
+						vDSP_vrampmuladd(iInputSamples, 1, &rampGain, &rampStep, channelOutput, 1, rampSamples);
+					}
+
+					if (rampSamples < iSampleCount)
+					{
+						vDSP_vsma(iInputSamples + rampSamples, 1, &targetGain, channelOutput + rampSamples, 1,
+								  channelOutput + rampSamples, 1, iSampleCount - rampSamples);
+					}
+
+					perChOutputMutex_[i].unlock();
+
+					// The gain of the last sample: the target once the ramp is over or has ended exactly here.
+					if (rampSamples < iSampleCount || (realRampPeriod >= 2 && rampSamples == realRampPeriod))
+					{
+						currentGain = targetGain;
+					}
+					else if (realRampPeriod >= 2)
+					{
+						currentGain = currentGain + static_cast<float>(rampSamples - 1) * rampStep;
+					}
+
+					ioStartEndGains.channelGains_[i] = currentGain;
+					ioStartEndGains.touched_ = true;
+					ioStartEndGains.gainsValid_ = true;
+					continue;
+				}
+#endif
+
 				vectDSP_->ramp(currentGain, targetGain, smoothedGains_, realRampPeriod);	// realRampPeriod is between 0 and 4800 samples.
 
 				// adding constant portion after ramp if iSampleCount is longer than realRampPeriod (rarely happens)
@@ -4220,6 +4278,22 @@ namespace IABGAINSPROC
 					ioStartEndGains.gainsValid_ = true;
 					continue;
 				}
+
+#ifdef USE_MAC_ACCELERATE
+				// gain times input added into the output in one pass (vDSP_vsma).
+				{
+					float *channelOutput = oOutputSamples[i];
+
+					perChOutputMutex_[i].lock();
+					vDSP_vsma(iInputSamples, 1, &iTargetChannelGains[i], channelOutput, 1, channelOutput, 1, iSampleCount);
+					perChOutputMutex_[i].unlock();
+
+					ioStartEndGains.channelGains_[i] = iTargetChannelGains[i];
+					ioStartEndGains.touched_ = true;
+					ioStartEndGains.gainsValid_ = true;
+					continue;
+				}
+#endif
 
 				// Fill smoothedGains array with identical gain value (no smoothing applied here.)
 				vectDSP_->fill(iTargetChannelGains[i], smoothedGains_, iSampleCount);

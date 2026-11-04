@@ -125,8 +125,10 @@ namespace ImmersiveAudioBitstream
 		// Object for store any created instances
 		IABVBAP::vbapRendererExtendedSource vbapExtendedSourceObject(0, 0);
 
-        oVBAPExtendedSources.clear();
-        
+		// The sources go into the slots already there, by assignment: their gain buffers keep their memory, so the
+		// caller's resize of them allocates nothing (a clear and push_back freed and allocated them every sub-block).
+		std::size_t usedSources = 0;
+
         // If radius is close to surface of dome, just return single object
         if (iRadius >= 1.0 - kEPSILON)
         {
@@ -137,10 +139,11 @@ namespace ImmersiveAudioBitstream
 			// Generate vbap extended object
 			CreateExtendSource(lElevation, lAzimuth, lGain, iAperture, iDivergence, vbapExtendedSourceObject);
 
-            oVBAPExtendedSources.push_back(vbapExtendedSourceObject);
+            PutExtendedSource(oVBAPExtendedSources, usedSources, vbapExtendedSourceObject);
 
         } else if( iRadius < 0.0)
         {
+            oVBAPExtendedSources.clear();
             return kIABRendererInvalidRadiusError;
             
         }else
@@ -257,17 +260,35 @@ namespace ImmersiveAudioBitstream
 
 			// Generate vbap extended objects and add to oVBAPExtendedSources
 			CreateExtendSource(lElevation, lAzimuth, lGain, iAperture, iDivergence, vbapExtendedSourceObject);
-			oVBAPExtendedSources.push_back(vbapExtendedSourceObject);
+			PutExtendedSource(oVBAPExtendedSources, usedSources, vbapExtendedSourceObject);
 
 			CreateExtendSource(rElevation, rAzimuth, rGain, iAperture, iDivergence, vbapExtendedSourceObject);
-			oVBAPExtendedSources.push_back(vbapExtendedSourceObject);
+			PutExtendedSource(oVBAPExtendedSources, usedSources, vbapExtendedSourceObject);
 
 			CreateExtendSource(pElevation, pAzimuth, pGain, iAperture, iDivergence, vbapExtendedSourceObject);
-			oVBAPExtendedSources.push_back(vbapExtendedSourceObject);
+			PutExtendedSource(oVBAPExtendedSources, usedSources, vbapExtendedSourceObject);
         }
+
+        oVBAPExtendedSources.erase(oVBAPExtendedSources.begin() + usedSources, oVBAPExtendedSources.end());
 
         return kIABNoError;
     }
+
+	// Puts iSource in slot ioUsed of ioSources by assignment (appends when there is no such slot) and counts it.
+	void IABInterior::PutExtendedSource(std::vector<IABVBAP::vbapRendererExtendedSource>& ioSources,
+		std::size_t& ioUsed,
+		const IABVBAP::vbapRendererExtendedSource& iSource)
+	{
+		if (ioUsed < ioSources.size())
+		{
+			ioSources[ioUsed] = iSource;
+		}
+		else
+		{
+			ioSources.push_back(iSource);
+		}
+		ioUsed++;
+	}
     
 	iabError IABInterior::CreateExtendSource(const float& iElevation,
 		const float& iAzimuth,

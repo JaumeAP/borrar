@@ -115,7 +115,11 @@ namespace ImmersiveAudioBitstream
          *
          */
         void initGainTable();
-        
+
+        static void PutExtendedSource(std::vector<IABVBAP::vbapRendererExtendedSource>& ioSources,
+                                      std::size_t& ioUsed,
+                                      const IABVBAP::vbapRendererExtendedSource& iSource);
+
         /**
          * This function creates the vbap extended sources and returns it.
          *

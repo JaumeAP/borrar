@@ -73,6 +73,43 @@ namespace RenderUtils
         std::vector<float> temp((*fStart).fSpeakerGains.size(), 0.0f);
 
         build(fStart, fEnd, temp);
+
+        // Prefix sums of the leaves, when they come in strictly increasing theta order (the tree's own assumption).
+        fLeafThetaIndices.clear();
+        fPrefixGains.clear();
+        fLeavesContiguous = false;
+
+        std::size_t const count = temp.size();
+        bool sorted = true;
+
+        for (std::vector<VirtualSource>::const_iterator i = fStart; i != fEnd; i++)
+        {
+            if ((*i).fSpeakerGains.size() != count || (!fLeafThetaIndices.empty() && (*i).fThetaIndex <= fLeafThetaIndices.back()))
+            {
+                sorted = false;
+                break;
+            }
+            fLeafThetaIndices.push_back((*i).fThetaIndex);
+        }
+
+        if (!sorted)
+        {
+            fLeafThetaIndices.clear();
+            return;
+        }
+
+        fLeavesContiguous = fLeafThetaIndices.back() - fLeafThetaIndices.front() + 1 == static_cast<int>(fLeafThetaIndices.size());
+
+        fPrefixGains.assign((fLeafThetaIndices.size() + 1) * count, 0.0);
+        std::size_t k = 0;
+
+        for (std::vector<VirtualSource>::const_iterator i = fStart; i != fEnd; i++, k++)
+        {
+            for (std::size_t g = 0; g < count; g++)
+            {
+                fPrefixGains[(k + 1) * count + g] = fPrefixGains[k * count + g] + static_cast<double>((*i).fSpeakerGains[g]);
+            }
+        }
     }
 
 
@@ -131,6 +168,46 @@ namespace RenderUtils
 
     int VirtualSourceTree::averageGainsOverRange(int pQueryLow, int pQueryHigh, int pMin, int pMax, std::vector<float> &pSpeakerGains) const
     {
+        // Over the whole tree the walk adds the leaves whose theta index is in [pQueryLow, pQueryHigh]: take their sum
+        // from the prefix sums instead, one subtraction per gain. The double sum rounds to within a few ulp of the
+        // float sum of the walk, not bit for bit.
+        std::size_t const count = fRoot.fSpeakerGains.size();
+
+        if (!fLeafThetaIndices.empty() && pSpeakerGains.size() == count
+            && pMin <= fLeafThetaIndices.front() && pMax >= fLeafThetaIndices.back())
+        {
+            std::size_t first;
+            std::size_t last;
+
+            if (fLeavesContiguous)
+            {
+                // Leaves k = 0 .. n-1 have theta index front + k: the positions by arithmetic, no search.
+                long const n = static_cast<long>(fLeafThetaIndices.size());
+                long const front = fLeafThetaIndices.front();
+                first = static_cast<std::size_t>(std::min(std::max(static_cast<long>(pQueryLow) - front, 0L), n));
+                last = static_cast<std::size_t>(std::min(std::max(static_cast<long>(pQueryHigh) - front + 1, 0L), n));
+            }
+            else
+            {
+                first = std::lower_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryLow) - fLeafThetaIndices.begin();
+                last = std::upper_bound(fLeafThetaIndices.begin(), fLeafThetaIndices.end(), pQueryHigh) - fLeafThetaIndices.begin();
+            }
+
+            if (last <= first)
+            {
+                return 0;
+            }
+
+            double const *high = &fPrefixGains[last * count];
+            double const *low = &fPrefixGains[first * count];
+
+            for (std::size_t g = 0; g < count; g++)
+            {
+                pSpeakerGains[g] += static_cast<float>(high[g] - low[g]);
+            }
+
+            return static_cast<int>(last - first);
+        }
 
         /* if node, is the tree interval is within the search interval */
         /* if leaf, is the leaf within the search interval */
@@ -160,6 +237,7 @@ namespace RenderUtils
 
         return rslt;
     }
+
 
 
     std::ostream& operator<<(std::ostream& pStream, const HemisphereVirtualSources& pSources)

@@ -50,6 +50,12 @@ namespace RenderUtils
                    const std::vector<VirtualSource>::const_iterator &fEnd,
                    std::vector<float> &pGains);
 
+        // The leaves in order, for averageGainsOverRange: their theta indices, and in double the sum of the gains of
+        // the leaves before each one (fPrefixGains[k * gain count], one row more than leaves).
+        std::vector<int> fLeafThetaIndices;
+        std::vector<double> fPrefixGains;
+        bool fLeavesContiguous = false;     // theta indices front, front + 1, ...: positions without a search
+
 
     public:
 
