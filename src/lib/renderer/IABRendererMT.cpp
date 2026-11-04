@@ -161,9 +161,12 @@ void *MTRenderThreadWorker( void *iParam )
 			
 			// Capture error, but current unhandled.
 			// (Ming note: how to handle errors from thread worker is left as future improvement.)
+			// Into this thread's own outputs; the frame thread adds them into the frame's.
+			bool const toDecorr = job.objectRenderParam_.toDecorr_;
+			(toDecorr ? myThreadParam->wroteDecorr_ : myThreadParam->wroteOutput_) = true;
 			iabReturnCode = myObjectRenderer->RenderIABObject(
 				*(job.objectRenderParam_.iIABObject_)
-				, job.objectRenderParam_.oOutputChannels_
+				, toDecorr ? myThreadParam->threadDecorrOutput_ : myThreadParam->threadOutput_
 				, job.objectRenderParam_.iOutputChannelCount_
 				, job.objectRenderParam_.iOutputSampleBufferCount_
 			);
@@ -174,9 +177,10 @@ void *MTRenderThreadWorker( void *iParam )
 			
 			// Capture error, but current unhandled.
 			// (Ming note: how to handle errors from thread worker is left as future improvement.)
+			myThreadParam->wroteOutput_ = true;
 			iabReturnCode = myBedRenderer->RenderIABBed(
 				*(job.bedRenderParam_.iIABBed_)
-				, job.bedRenderParam_.oOutputChannels_
+				, myThreadParam->threadOutput_
 				, job.bedRenderParam_.iOutputChannelCount_
 				, job.bedRenderParam_.iOutputSampleBufferCount_
 			);
@@ -423,10 +427,6 @@ namespace ImmersiveAudioBitstream
 		doTerminate_ = false;
 		errorCode_ = kIABNoError;
 		warningCode_ = kIABNoError;
-
-        // Create the required nunber of
-        // output channel mutexes
-        perChOutputMutex.resize(kMaxOutputChannels);
 
 		if (iThreadPoolSize == 0)
 		{
@@ -695,6 +695,13 @@ namespace ImmersiveAudioBitstream
 
 		threads_.resize(threadPoolSize_);
 
+		// One set of output channel mutexes per thread, sized before any renderer takes a reference to its set.
+		perThreadOutputMutex.resize(threadPoolSize_);
+		for (uint32_t i = 0; i < threadPoolSize_; i++)
+		{
+			perThreadOutputMutex[i].resize(kMaxOutputChannels);
+		}
+
 		// Create threadPoolSize_ instances
 		for (uint32_t i = 0; i < threadPoolSize_; i++)
 		{
@@ -703,11 +710,11 @@ namespace ImmersiveAudioBitstream
 			assetWorkerParams_.push_back(new AssetDecoderMTWorkerParam);
 
 			// object renderer pool
-			iabObjectRenderers_.push_back(new IABObjectRenderer(gainsHistoryMutex, perChOutputMutex));
+			iabObjectRenderers_.push_back(new IABObjectRenderer(gainsHistoryMutex, perThreadOutputMutex[i]));
 			objectWorkerParams_.push_back(new ObjectRendererMTWorkerParam);
 
 			// bed renderer pool
-			iabBedRenderers_.push_back(new IABBedRenderer(perChOutputMutex));
+			iabBedRenderers_.push_back(new IABBedRenderer(perThreadOutputMutex[i]));
 			bedWorkerParams_.push_back(new BedRendererMTWorkerParam);
 
 			// thread function parameters pool
@@ -763,12 +770,26 @@ namespace ImmersiveAudioBitstream
 		//
 		assetDecoderParam.render96kTo48k_ = render96kTo48k_;
 
+		// The outputs of each thread, silent: a normal set and a decorrelation set per thread.
+		std::size_t const threadChannels = numRendererOutputChannels_;
+		threadOutputBuffer_.assign(std::size_t(threadPoolSize_) * 2 * threadChannels * kIABMaxFrameSampleCount, 0.0f);
+		threadOutputPointers_.resize(std::size_t(threadPoolSize_) * 2 * threadChannels);
+		for (std::size_t k = 0; k < threadOutputPointers_.size(); k++)
+		{
+			threadOutputPointers_[k] = threadOutputBuffer_.data() + k * kIABMaxFrameSampleCount;
+		}
+
 		// *** Initialize pool of instances, and worker params with Config related parameters
 		// (This is only partial initialization. Other parameters depend on pasred frames, which
 		// will be used, once only during rendering first frame, to complete initialiation.)
 		//
 		for (uint32_t i = 0; i < threadPoolSize_; i++)
 		{
+			threadFunctionParameters_[i]->threadOutput_ = &threadOutputPointers_[(2 * i) * threadChannels];
+			threadFunctionParameters_[i]->threadDecorrOutput_ = &threadOutputPointers_[(2 * i + 1) * threadChannels];
+			threadFunctionParameters_[i]->wroteOutput_ = false;
+			threadFunctionParameters_[i]->wroteDecorr_ = false;
+
 			iabAssetDecoders_[i]->SetUp(assetDecoderParam);
 			iabObjectRenderers_[i]->SetUp(objectRendererParam);
 			objectWorkerParams_[i]->iOutputChannelCount_ = numRendererOutputChannels_;
@@ -1260,6 +1281,7 @@ namespace ImmersiveAudioBitstream
 					// frame sub-elements.
 					//
 					jobParameterCarrier_.objectRenderParam_.oOutputChannels_ = decorrOutputChannelPointers_;
+					jobParameterCarrier_.objectRenderParam_.toDecorr_ = true;
 
 					// Set flag hasDecorrObjects to true, to indicate presence of decorr object(s).
 					hasDecorrObjects = true;
@@ -1270,6 +1292,7 @@ namespace ImmersiveAudioBitstream
 					// Route rendered output as normal.
 					//
 					jobParameterCarrier_.objectRenderParam_.oOutputChannels_ = oOutputChannels;
+					jobParameterCarrier_.objectRenderParam_.toDecorr_ = false;
 				}
 
 				// Push to job queue
@@ -1322,6 +1345,32 @@ namespace ImmersiveAudioBitstream
 
 		// unlock jobCountMutex
 		jobCountMutex.unlock();
+
+		// Every thread rendered into its own outputs: add them into the frame's, in thread order, and clear them for the
+		// next frame (also after an error, so that nothing is left for the next frame).
+		for (uint32_t t = 0; t < threadPoolSize_; t++)
+		{
+			ThreadWorkerFunctionParam &thread = *threadFunctionParameters_[t];
+			if (thread.wroteOutput_)
+			{
+				for (uint32_t c = 0; c < iOutputChannelCount; c++)
+				{
+					vectDSP_->add(oOutputChannels[c], thread.threadOutput_[c], oOutputChannels[c], frameSampleCount_);
+					memset(thread.threadOutput_[c], 0, sizeof(IABSampleType) * frameSampleCount_);
+				}
+				thread.wroteOutput_ = false;
+			}
+			if (thread.wroteDecorr_)
+			{
+				for (uint32_t c = 0; c < iOutputChannelCount; c++)
+				{
+					vectDSP_->add(decorrOutputChannelPointers_[c], thread.threadDecorrOutput_[c], decorrOutputChannelPointers_[c],
+					              frameSampleCount_);
+					memset(thread.threadDecorrOutput_[c], 0, sizeof(IABSampleType) * frameSampleCount_);
+				}
+				thread.wroteDecorr_ = false;
+			}
+		}
 
 		if (kIABNoError != ec) {
 			return ec;
