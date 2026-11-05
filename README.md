@@ -17,6 +17,14 @@ conventions. The build system can generate an HTML rendering.
 The [unit tests](./tests) and the [render-to-files application](./src/apps/)
 illustrate the use of the library.
 
+# Layouts (this fork)
+
+[layouts/](./layouts) makes renderer configurations (`.cfg`) for real rooms from their
+measurements, with the angles IABLib's own transform gives each speaker's place in the
+room (`cubeangles`). Its generator made
+[configurations/IAB_cinema_11x6.5.array.vbap.cfg](./configurations/IAB_cinema_11x6.5.array.vbap.cfg).
+Design in [layouts/docs/design.md](./layouts/docs/design.md).
+
 # Dependencies
 
 The library has no runtime dependencies.

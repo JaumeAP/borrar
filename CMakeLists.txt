@@ -51,3 +51,7 @@ endif()
 # tests
 
 add_subdirectory(tests)
+
+# renderer configurations for real rooms (layouts/docs/design.md)
+
+add_subdirectory(layouts)
